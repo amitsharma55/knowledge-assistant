@@ -1,7 +1,7 @@
 # Knowledge Assistant
 
 Chat-based assistant that answers questions about internal integrations,
-grounded in Confluence documentation.
+grounded in markdown documentation stored in a GitLab repo and/or project wiki.
 
 - Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Chat API (Go): [`services/chat-api/`](services/chat-api/)

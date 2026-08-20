@@ -14,14 +14,14 @@ import (
 
 	"github.com/example/knowledge-assistant/internal/chunker"
 	"github.com/example/knowledge-assistant/internal/embed"
-	"github.com/example/knowledge-assistant/services/ingestion/internal/confluence"
 	"github.com/example/knowledge-assistant/internal/index"
+	"github.com/example/knowledge-assistant/services/ingestion/internal/gitlab"
 	"github.com/example/knowledge-assistant/services/ingestion/internal/storage"
 )
 
 func main() {
-	source := flag.String("source", "confluence", "confluence | fixtures")
-	space := flag.String("space", "", "Confluence space key (or fixture space label)")
+	source := flag.String("source", "gitlab", "gitlab | fixtures")
+	space := flag.String("space", "", "fixture space label (fixtures mode only)")
 	fixturesDir := flag.String("fixtures", "fixtures", "directory of *.md files when source=fixtures")
 	osURL := flag.String("opensearch", envOr("KA_OPENSEARCH_URL", "http://localhost:9200"), "OpenSearch URL")
 	osIdx := flag.String("index", envOr("KA_OPENSEARCH_INDEX", "kb-chunks"), "OpenSearch index")
@@ -38,19 +38,30 @@ func main() {
 		log.Warn("ensure index failed (OpenSearch running?)", "err", err)
 	}
 
-	var pages []confluence.Page
+	var pages []page
 	var err error
 
 	switch *source {
 	case "fixtures":
 		pages, err = loadFixtures(*fixturesDir, *space)
-	case "confluence":
-		cli := &confluence.Client{
-			BaseURL: os.Getenv("KA_CONFLUENCE_URL"),
-			Token:   os.Getenv("KA_CONFLUENCE_TOKEN"),
-			HTTP:    &http.Client{Timeout: 30 * time.Second},
+	case "gitlab":
+		cli := gitlab.New(gitlab.Config{
+			BaseURL:     os.Getenv("KA_GITLAB_URL"),
+			Token:       os.Getenv("KA_GITLAB_TOKEN"),
+			ProjectID:   os.Getenv("KA_GITLAB_PROJECT"),
+			RepoRef:     envOr("KA_GITLAB_REF", ""),
+			RepoPath:    envOr("KA_GITLAB_PATH", "docs"),
+			IncludeRepo: envOr("KA_GITLAB_INCLUDE_REPO", "true") == "true",
+			IncludeWiki: envOr("KA_GITLAB_INCLUDE_WIKI", "true") == "true",
+		})
+		var gps []gitlab.Page
+		gps, err = cli.FetchAll(ctx)
+		for _, p := range gps {
+			pages = append(pages, page{
+				SpaceKey: p.ProjectID + ":" + p.Source, ID: p.ID, Title: p.Title,
+				Markdown: p.Markdown, WebURL: p.WebURL, UpdatedAt: p.UpdatedAt,
+			})
 		}
-		pages, err = cli.ListChangedPages(ctx, *space, time.Time{})
 	default:
 		log.Error("unknown source", "source", *source)
 		os.Exit(2)
@@ -62,14 +73,9 @@ func main() {
 
 	var docs []index.Doc
 	for _, p := range pages {
-		md := p.BodyHTML
-		if *source == "confluence" {
-			md = chunker.HTMLToMarkdown(p.BodyHTML)
-		}
-		_ = store.PutRaw(ctx, p.SpaceKey, p.ID, itoa(p.Version), p.BodyHTML)
-		_ = store.PutNormalized(ctx, p.SpaceKey, p.ID, md)
+		_ = store.PutNormalized(ctx, p.SpaceKey, p.ID, p.Markdown)
 
-		for _, c := range chunker.Split(md, 800, 100) {
+		for _, c := range chunker.Split(p.Markdown, 800, 100) {
 			vec, err := embedder.Embed(ctx, c.Text)
 			if err != nil {
 				log.Error("embed failed", "err", err, "page", p.ID)
@@ -85,7 +91,6 @@ func main() {
 				Text:        c.Text,
 				Embedding:   vec,
 				UpdatedAt:   p.UpdatedAt.Format(time.RFC3339),
-				ACLGroups:   p.ACLGroups,
 			})
 		}
 	}
@@ -93,15 +98,29 @@ func main() {
 	if err := idxr.Bulk(ctx, docs); err != nil {
 		log.Warn("bulk index failed (OpenSearch running?)", "err", err)
 	}
-	log.Info("ingest complete", "pages", len(pages), "chunks", len(docs))
+	log.Info("ingest complete", "source", *source, "pages", len(pages), "chunks", len(docs))
 }
 
-func loadFixtures(dir, space string) ([]confluence.Page, error) {
+// page is the ingester's internal normalized shape; both GitLab and fixture
+// sources fan in to it before chunking.
+type page struct {
+	SpaceKey  string
+	ID        string
+	Title     string
+	Markdown  string
+	WebURL    string
+	UpdatedAt time.Time
+}
+
+func loadFixtures(dir, space string) ([]page, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	var pages []confluence.Page
+	if space == "" {
+		space = "FIXTURES"
+	}
+	var pages []page
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
 			continue
@@ -111,14 +130,13 @@ func loadFixtures(dir, space string) ([]confluence.Page, error) {
 			return nil, err
 		}
 		id := strings.TrimSuffix(e.Name(), ".md")
-		pages = append(pages, confluence.Page{
+		pages = append(pages, page{
+			SpaceKey:  space,
 			ID:        id,
 			Title:     strings.ReplaceAll(id, "-", " "),
-			SpaceKey:  space,
-			BodyHTML:  string(body),
+			Markdown:  string(body),
 			WebURL:    "file://" + filepath.Join(dir, e.Name()),
 			UpdatedAt: time.Now(),
-			Version:   1,
 		})
 	}
 	return pages, nil
@@ -139,18 +157,4 @@ func envOr(k, d string) string {
 		return v
 	}
 	return d
-}
-
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var b [16]byte
-	pos := len(b)
-	for i > 0 {
-		pos--
-		b[pos] = byte('0' + i%10)
-		i /= 10
-	}
-	return string(b[pos:])
 }
