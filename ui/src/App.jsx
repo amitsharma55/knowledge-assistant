@@ -12,11 +12,18 @@ export default function App() {
   const [uploads, setUploads] = useState([]);
   const [busy, setBusy] = useState(false);
   const sessionId = useRef(crypto.randomUUID());
+  // streamingRef guards the message-fetch effect during send(). Without it, the
+  // `chat` SSE event for a newly-created chat triggers setCurrentChatId, which
+  // fires the effect below and re-fetches messages from Postgres — clobbering
+  // our optimistic [user, assistant-placeholder] state so subsequent token
+  // events append to the wrong turn.
+  const streamingRef = useRef(false);
 
   const currentChat = chats.find(c => c.id === currentChatId);
 
   useEffect(() => { refreshChats(); }, []);
   useEffect(() => {
+    if (streamingRef.current) return;
     if (!currentChatId) { setMessages([]); return; }
     getMessages(currentChatId).then(setMessages).catch(() => setMessages([]));
   }, [currentChatId]);
@@ -51,6 +58,7 @@ export default function App() {
   }
 
   async function send(text) {
+    streamingRef.current = true;
     setBusy(true);
     // Optimistically append user turn + a placeholder assistant turn.
     setMessages(m => [
@@ -86,6 +94,7 @@ export default function App() {
         }
       }
     } finally {
+      streamingRef.current = false;
       setBusy(false);
       refreshChats();
     }
