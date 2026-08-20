@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ingestion-confluence
+  namespace: knowledge-assistant
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: ingestion  # IRSA: bedrock + opensearch + s3
+          restartPolicy: OnFailure
+          containers:
+            - name: indexer
+              image: <account>.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/ingestion:latest
+              args: ["-source=confluence", "-space=INTEG"]
+              env:
+                - { name: KA_OPENSEARCH_URL, valueFrom: { secretKeyRef: { name: ka-config, key: opensearch_url } } }
+                - { name: KA_CONFLUENCE_URL, valueFrom: { secretKeyRef: { name: ka-config, key: confluence_url } } }
+                - { name: KA_CONFLUENCE_TOKEN, valueFrom: { secretKeyRef: { name: ka-config, key: confluence_token } } }
+              resources:
+                requests: { cpu: "500m", memory: "512Mi" }
+                limits:   { cpu: "2",    memory: "2Gi" }

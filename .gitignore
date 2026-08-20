@@ -1,0 +1,12 @@
+bin/
+dist/
+node_modules/
+.env
+.env.local
+.env.*.local
+.data/
+*.log
+.DS_Store
+coverage.out
+.vscode/
+.idea/
