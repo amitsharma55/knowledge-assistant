@@ -80,18 +80,21 @@ func scopeFilter(scope rag.Scope) map[string]any {
 	must := []any{
 		map[string]any{"term": map[string]any{"team": scope.Team().Slug()}},
 	}
-	if groups := scope.Groups(); len(groups) > 0 {
-		// A chunk with no aclGroups is visible to every member of the team,
-		// matching MemoryStore.aclOK.
-		must = append(must, map[string]any{"bool": map[string]any{
-			"minimum_should_match": 1,
-			"should": []any{
-				map[string]any{"terms": map[string]any{"aclGroups": groups}},
-				map[string]any{"bool": map[string]any{
-					"must_not": map[string]any{"exists": map[string]any{"field": "aclGroups"}},
-				}},
-			},
-		}})
-	}
+	// The ACL clause is always emitted, even when the caller belongs to zero
+	// groups. With an empty groups slice, the "terms" should-clause matches
+	// nothing, so minimum_should_match:1 leaves only the "no aclGroups field"
+	// branch — i.e. only unrestricted chunks are visible. That matches
+	// MemoryStore.aclOK(chunkGroups, userGroups), which denies whenever
+	// userGroups is empty and chunkGroups is non-empty.
+	groups := scope.Groups()
+	must = append(must, map[string]any{"bool": map[string]any{
+		"minimum_should_match": 1,
+		"should": []any{
+			map[string]any{"terms": map[string]any{"aclGroups": groups}},
+			map[string]any{"bool": map[string]any{
+				"must_not": map[string]any{"exists": map[string]any{"field": "aclGroups"}},
+			}},
+		},
+	}})
 	return map[string]any{"bool": map[string]any{"must": must}}
 }

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/example/knowledge-assistant/internal/embed"
@@ -51,23 +52,65 @@ func TestSearchFiltersInsideKNNNotAsPostFilter(t *testing.T) {
 	}
 }
 
-// containsTermTeam walks the filter looking for {"term":{"team":<slug>}}.
+// TestScopeFilterZeroGroupsStillConstrainsACL pins the fix for a divergence
+// from MemoryStore.aclOK: a caller with zero groups must still get an
+// aclGroups constraint (limiting them to unrestricted chunks), not an absent
+// ACL clause that would expose every doc in the team.
+func TestScopeFilterZeroGroupsStillConstrainsACL(t *testing.T) {
+	scope := scopeFor(t, "coupa", "coupa") // scopeFor always yields zero groups
+	if len(scope.Groups()) != 0 {
+		t.Fatalf("test setup: expected zero groups, got %v", scope.Groups())
+	}
+
+	filter := scopeFilter(scope)
+	raw, err := json.Marshal(filter)
+	if err != nil {
+		t.Fatalf("marshal filter: %v", err)
+	}
+	if !strings.Contains(string(raw), `"aclGroups"`) {
+		t.Fatalf("zero-group scope produced a filter with no aclGroups constraint at all, so every doc in the team (including ACL-restricted ones) is visible: %s", raw)
+	}
+}
+
+// containsTermTeam walks the filter looking for {"term":{"team":<slug>}} that
+// sits inside a bool.must array — i.e. actually constrains the query, not
+// merely present somewhere non-binding like a "should" clause.
 func containsTermTeam(v any, slug string) bool {
+	return findBindingTermTeam(v, slug, true)
+}
+
+// findBindingTermTeam walks the filter tree. binding tracks whether the
+// current position is reachable only through must-context (AND) clauses;
+// should/must_not clauses are non-binding, since a term there does not
+// constrain the query on its own.
+func findBindingTermTeam(v any, slug string, binding bool) bool {
 	switch n := v.(type) {
 	case map[string]any:
 		if term, ok := n["term"].(map[string]any); ok {
 			if got, ok := term["team"].(string); ok && got == slug {
-				return true
+				return binding
 			}
 		}
+		if b, ok := n["bool"].(map[string]any); ok {
+			if must, ok := b["must"]; ok && findBindingTermTeam(must, slug, true) {
+				return true
+			}
+			if should, ok := b["should"]; ok && findBindingTermTeam(should, slug, false) {
+				return true
+			}
+			if mustNot, ok := b["must_not"]; ok && findBindingTermTeam(mustNot, slug, false) {
+				return true
+			}
+			return false
+		}
 		for _, child := range n {
-			if containsTermTeam(child, slug) {
+			if findBindingTermTeam(child, slug, binding) {
 				return true
 			}
 		}
 	case []any:
 		for _, child := range n {
-			if containsTermTeam(child, slug) {
+			if findBindingTermTeam(child, slug, binding) {
 				return true
 			}
 		}
