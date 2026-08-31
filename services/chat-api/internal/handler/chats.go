@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/example/knowledge-assistant/services/chat-api/internal/middleware"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/repo"
 	"github.com/go-chi/chi/v5"
 )
@@ -15,7 +16,7 @@ type ChatsHandler struct {
 }
 
 func (h *ChatsHandler) List(w http.ResponseWriter, r *http.Request) {
-	chats, err := h.Repo.ListChats(r.Context(), userID(r), 30)
+	chats, err := h.Repo.ListChats(r.Context(), middleware.UserFromContext(r.Context()), 30)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -31,7 +32,7 @@ func (h *ChatsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Title string `json:"title"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	c, err := h.Repo.CreateChat(r.Context(), userID(r), body.Title)
+	c, err := h.Repo.CreateChat(r.Context(), middleware.UserFromContext(r.Context()), body.Title)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -41,7 +42,7 @@ func (h *ChatsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChatsHandler) Messages(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	msgs, err := h.Repo.ListMessages(r.Context(), userID(r), id)
+	msgs, err := h.Repo.ListMessages(r.Context(), middleware.UserFromContext(r.Context()), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -61,7 +62,7 @@ func (h *ChatsHandler) Rename(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title required", http.StatusBadRequest)
 		return
 	}
-	if err := h.Repo.UpdateTitle(r.Context(), userID(r), id, body.Title); err != nil {
+	if err := h.Repo.UpdateTitle(r.Context(), middleware.UserFromContext(r.Context()), id, body.Title); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -70,21 +71,11 @@ func (h *ChatsHandler) Rename(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChatsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := h.Repo.DeleteChat(r.Context(), userID(r), id); err != nil {
+	if err := h.Repo.DeleteChat(r.Context(), middleware.UserFromContext(r.Context()), id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// userID derives a dev-mode user identifier from the X-Dev-Groups header,
-// mirroring the auth middleware pattern. In prod this will come from the JWT
-// sub claim.
-func userID(r *http.Request) string {
-	if v := r.Header.Get("X-Dev-User"); v != "" {
-		return v
-	}
-	return "dev@example.com"
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

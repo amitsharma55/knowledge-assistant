@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/example/knowledge-assistant/internal/rag"
-	"github.com/example/knowledge-assistant/internal/team"
+	"github.com/example/knowledge-assistant/services/chat-api/internal/middleware"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/repo"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/session"
 )
@@ -47,13 +47,12 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	// TODO(task 5): replace with middleware.ScopeFromContext(r.Context()) once
-	// the auth middleware resolves and injects the caller's Scope. This
-	// hardcodes "coupa" purely to keep the build/tests green until then.
-	tmpRegistry := team.NewRegistry(team.DefaultInfos())
-	tmpActive, _ := tmpRegistry.Parse("coupa")
-	scope := rag.NewScope(tmpActive, []team.Team{tmpActive}, nil)
-	uid := userID(r)
+	scope, ok := middleware.ScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, "no team scope", http.StatusForbidden)
+		return
+	}
+	uid := middleware.UserFromContext(r.Context())
 
 	// Ensure a persistent chat exists. Auto-title from first message.
 	var chat repo.Chat

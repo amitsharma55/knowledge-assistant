@@ -79,9 +79,16 @@ func TestMissingTeamHeaderIsRejectedNotDefaulted(t *testing.T) {
 	}
 }
 
-// TestXDevUserIgnoredInProdMode verifies that X-Dev-User header is not trusted
-// in prod mode, ensuring identity comes only from verified JWT.
-func TestXDevUserIgnoredInProdMode(t *testing.T) {
+// TestProdModeRejectsBeforeScopeResolution verifies that Auth(false) 401s the
+// request before WithScope ever runs, regardless of what headers are sent.
+//
+// This does NOT prove that X-Dev-User is ignored in prod mode: Auth(false)
+// currently rejects every request unconditionally (there is no real JWT
+// verification yet), so this test would pass identically with no
+// X-Dev-User header at all. A genuine "X-Dev-User is ignored in prod" test
+// is not writable until Auth(false) does real JWT verification and could
+// plausibly reach WithScope with a forged X-Dev-User header still present.
+func TestProdModeRejectsBeforeScopeResolution(t *testing.T) {
 	reg := team.NewRegistry(team.DefaultInfos())
 	res := StaticResolver{
 		Registry: reg,

@@ -84,6 +84,12 @@ func WithScope(reg *team.Registry, res Resolver) func(http.Handler) http.Handler
 	}
 }
 
+// ContextWithAllowedForTest installs an allowed-team set without running the
+// middleware. Test support only.
+func ContextWithAllowedForTest(ctx context.Context, allowed []team.Team) context.Context {
+	return context.WithValue(ctx, allowedCtxKey{}, allowed)
+}
+
 func ScopeFromContext(ctx context.Context) (rag.Scope, bool) {
 	s, ok := ctx.Value(scopeCtxKey{}).(rag.Scope)
 	return s, ok && !s.IsZero()

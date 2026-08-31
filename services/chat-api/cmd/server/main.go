@@ -15,6 +15,7 @@ import (
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
 	"github.com/example/knowledge-assistant/internal/rag"
+	"github.com/example/knowledge-assistant/internal/team"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/anthropic"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/bedrock"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/config"
@@ -110,7 +111,11 @@ func main() {
 		}
 	}
 
-	authed := r.With(middleware.Auth(true /* dev */))
+	registry := team.NewRegistry(team.DefaultInfos())
+	resolver := middleware.StaticResolver{Registry: registry, Members: middleware.DemoMembers()}
+
+	authed := r.With(middleware.Auth(true /* dev */), middleware.WithScope(registry, resolver))
+	authed.Method(http.MethodGet, "/v1/teams", &handler.TeamsHandler{Registry: registry})
 	authed.Method(http.MethodPost, "/v1/chat/messages", &handler.ChatHandler{
 		Orchestrator: orch, Sessions: sessions, Repo: repository, Log: log,
 	})
