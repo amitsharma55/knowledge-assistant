@@ -160,7 +160,7 @@ This mirrors the dev/prod split already present in
 `rag.Scope` carries the resolved team and the caller's ACL groups. Its fields
 are **unexported**, and it is constructible only through a constructor in the
 auth/middleware layer that takes resolved identity. A handler cannot build a
-`Scope` from a request body.
+`Scope` from an untrusted request value.
 
 The `rag.Retriever` interface changes:
 
@@ -177,10 +177,17 @@ conventional.
 Request flow:
 
 1. Middleware verifies identity and calls `Resolver.AllowedTeams`.
-2. The handler reads the client's requested team from the request body and
+2. Middleware reads the requested team from the `X-Team` header and
    **intersects** it with the allowed set. A team outside the set is rejected
    with 403 — never silently substituted, which would mask both bugs and
-   probing.
+   probing. An unknown team returns the same 403 as an unauthorised one, so a
+   caller cannot enumerate teams by probing.
+
+   *(Revised during implementation. The team was originally specified as a
+   request-body field; middleware cannot read a JSON body without consuming
+   it, which would have pushed authorisation down into each handler — the
+   scattering this design exists to prevent. The header keeps resolution,
+   authorisation and `Scope` construction in one place.)*
 3. The middleware constructor produces a `Scope` from the intersected result.
 4. The `Scope` is passed to the orchestrator and on to every retriever.
 
