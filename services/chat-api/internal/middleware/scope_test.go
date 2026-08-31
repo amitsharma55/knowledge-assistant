@@ -1,0 +1,80 @@
+package middleware
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/example/knowledge-assistant/internal/team"
+)
+
+func testResolver() (*team.Registry, Resolver) {
+	reg := team.NewRegistry(team.DefaultInfos())
+	return reg, StaticResolver{
+		Registry: reg,
+		Members: map[string][]string{
+			"a@example.com": {"coupa"},
+			"b@example.com": {"star", "hr"},
+		},
+	}
+}
+
+// probe records the scope the middleware installed.
+func probe(t *testing.T, userID, teamHeader string) (*httptest.ResponseRecorder, string) {
+	t.Helper()
+	reg, res := testResolver()
+	var sawTeam string
+	h := WithScope(reg, res)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s, ok := ScopeFromContext(r.Context())
+		if !ok {
+			t.Error("handler reached with no scope in context")
+			return
+		}
+		sawTeam = s.Team().Slug()
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/v1/chats", nil)
+	req.Header.Set("X-Dev-User", userID)
+	if teamHeader != "" {
+		req.Header.Set("X-Team", teamHeader)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec, sawTeam
+}
+
+func TestScopeInstalledForAMemberTeam(t *testing.T) {
+	rec, sawTeam := probe(t, "b@example.com", "hr")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if sawTeam != "hr" {
+		t.Errorf("scope team = %q, want hr", sawTeam)
+	}
+}
+
+func TestForgedTeamIsRejectedWithoutReachingTheHandler(t *testing.T) {
+	rec, sawTeam := probe(t, "b@example.com", "coupa")
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403 for a team the caller is not in", rec.Code)
+	}
+	if sawTeam != "" {
+		t.Errorf("handler ran with team %q; a forged team must not reach retrieval", sawTeam)
+	}
+}
+
+func TestUnknownTeamIsRejected(t *testing.T) {
+	rec, _ := probe(t, "b@example.com", "finance")
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403 for an unregistered team", rec.Code)
+	}
+}
+
+func TestMissingTeamHeaderIsRejectedNotDefaulted(t *testing.T) {
+	rec, sawTeam := probe(t, "b@example.com", "")
+	if rec.Code == http.StatusOK {
+		t.Error("request with no X-Team succeeded; a missing team must not silently default")
+	}
+	if sawTeam != "" {
+		t.Errorf("handler ran with team %q despite no X-Team header", sawTeam)
+	}
+}
