@@ -58,7 +58,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var chat repo.Chat
 	if h.Repo != nil {
 		if req.ChatID == "" {
-			c, err := h.Repo.CreateChat(r.Context(), uid, autoTitle(req.Message))
+			c, err := h.Repo.CreateChat(r.Context(), uid, scope.Team().Slug(), autoTitle(req.Message))
 			if err != nil {
 				http.Error(w, "create chat: "+err.Error(), http.StatusInternalServerError)
 				return
