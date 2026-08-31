@@ -24,7 +24,12 @@ Settled during brainstorming; recorded here so the plan does not relitigate them
    nothing. Not index-per-team: the operational cost is not justified at this
    size, and a single index keeps a future cross-team capability open.
 2. **Content source: SharePoint**, superseding GitLab as the primary corpus.
-   One SharePoint site (or document library) per team.
+   One SharePoint site (or document library) per team. **No SharePoint site is
+   available for the demo**: documents are placed directly in S3 under a
+   per-team prefix, and the SharePoint crawler is added later as a producer
+   into the same S3 layout. Because S3 is already the seam between fetching
+   bytes and indexing them, nothing downstream of it changes when the crawler
+   arrives.
 3. **Content is staged in S3 before indexing**, not ingested directly from
    Graph into the vector store.
 4. **Identity: Entra ID group claims**, with a hardcoded resolver for the demo
