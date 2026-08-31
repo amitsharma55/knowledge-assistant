@@ -24,14 +24,14 @@ func probe(t *testing.T, userID, teamHeader string) (*httptest.ResponseRecorder,
 	t.Helper()
 	reg, res := testResolver()
 	var sawTeam string
-	h := WithScope(reg, res)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := Auth(true)(WithScope(reg, res)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s, ok := ScopeFromContext(r.Context())
 		if !ok {
 			t.Error("handler reached with no scope in context")
 			return
 		}
 		sawTeam = s.Team().Slug()
-	}))
+	})))
 	req := httptest.NewRequest(http.MethodGet, "/v1/chats", nil)
 	req.Header.Set("X-Dev-User", userID)
 	if teamHeader != "" {
@@ -76,5 +76,28 @@ func TestMissingTeamHeaderIsRejectedNotDefaulted(t *testing.T) {
 	}
 	if sawTeam != "" {
 		t.Errorf("handler ran with team %q despite no X-Team header", sawTeam)
+	}
+}
+
+// TestXDevUserIgnoredInProdMode verifies that X-Dev-User header is not trusted
+// in prod mode, ensuring identity comes only from verified JWT.
+func TestXDevUserIgnoredInProdMode(t *testing.T) {
+	reg := team.NewRegistry(team.DefaultInfos())
+	res := StaticResolver{
+		Registry: reg,
+		Members: map[string][]string{
+			"b@example.com": {"star", "hr"},
+		},
+	}
+	h := Auth(false)(WithScope(reg, res)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not run in prod mode with no valid auth")
+	})))
+	req := httptest.NewRequest(http.MethodGet, "/v1/chats", nil)
+	req.Header.Set("X-Dev-User", "b@example.com")
+	req.Header.Set("X-Team", "hr")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("prod mode should 401 on missing real auth, got %d", rec.Code)
 	}
 }

@@ -8,25 +8,38 @@ import (
 
 type ctxKey int
 
-const groupsKey ctxKey = 1
+const (
+	groupsKey ctxKey = 1
+	userIDKey ctxKey = 2
+)
 
 // Auth is a placeholder JWT/Cognito verifier. In dev it reads groups from
-// the `X-Dev-Groups` header for easy testing. In prod, replace with real
-// JWT verification against the Cognito JWKS.
+// the `X-Dev-Groups` header and user from `X-Dev-User` for easy testing.
+// In prod, replace with real JWT verification against the Cognito JWKS.
 func Auth(dev bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var groups []string
+			var userID string
+
 			if dev {
 				if h := r.Header.Get("X-Dev-Groups"); h != "" {
 					groups = strings.Split(h, ",")
+				}
+				// Read user from X-Dev-User, default to dev@example.com
+				if u := r.Header.Get("X-Dev-User"); u != "" {
+					userID = u
+				} else {
+					userID = "dev@example.com"
 				}
 			} else {
 				// TODO: verify Bearer JWT, extract cognito:groups
 				http.Error(w, "prod auth not wired", http.StatusUnauthorized)
 				return
 			}
+
 			ctx := context.WithValue(r.Context(), groupsKey, groups)
+			ctx = context.WithValue(ctx, userIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

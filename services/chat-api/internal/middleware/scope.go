@@ -10,7 +10,6 @@ import (
 
 type scopeCtxKey struct{}
 type allowedCtxKey struct{}
-type userCtxKey struct{}
 
 // Resolver maps a user to the teams they belong to.
 type Resolver interface {
@@ -53,15 +52,14 @@ func DemoMembers() map[string][]string {
 func WithScope(reg *team.Registry, res Resolver) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID := userIDFrom(r)
+			userID := UserFromContext(r.Context())
 			allowed, err := res.AllowedTeams(r.Context(), userID)
 			if err != nil {
 				http.Error(w, "resolve teams", http.StatusInternalServerError)
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), userCtxKey{}, userID)
-			ctx = context.WithValue(ctx, allowedCtxKey{}, allowed)
+			ctx := context.WithValue(r.Context(), allowedCtxKey{}, allowed)
 
 			// The teams listing needs the allowed set but has no active team.
 			if r.URL.Path == "/v1/teams" {
@@ -97,13 +95,11 @@ func AllowedFromContext(ctx context.Context) ([]team.Team, bool) {
 }
 
 func UserFromContext(ctx context.Context) string {
-	s, _ := ctx.Value(userCtxKey{}).(string)
-	return s
+	if v := ctx.Value(userIDKey); v != nil {
+		if u, ok := v.(string); ok {
+			return u
+		}
+	}
+	return ""
 }
 
-func userIDFrom(r *http.Request) string {
-	if v := r.Header.Get("X-Dev-User"); v != "" {
-		return v
-	}
-	return "dev@example.com"
-}
