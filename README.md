@@ -53,6 +53,17 @@ membership table (`middleware.DemoMembers`) is:
 | `b@example.com`      | star, hr           |
 | `dev@example.com` (default, no header sent) | coupa, star, hr |
 
+**There is no prod mode yet — do not deploy this as-is.**
+`cmd/server/main.go` hardcodes `middleware.Auth(true /* dev */)`, and dev
+`Auth` trusts `X-Dev-User` verbatim with no signature or session check
+behind it. That means the entire team boundary described above currently
+rests on a single client-supplied, spoofable header: anyone who can reach
+the API can set `X-Dev-User: dev@example.com` and get every team (coupa,
+star, hr), no ingestion access controls notwithstanding. This is fine for
+local development and demos behind a trusted network, but wiring real JWT
+verification (and a real prod auth mode) is required, and out of scope
+for this branch, before this is exposed to any untrusted network.
+
 Team is derived from the SharePoint site a document lives in, not from
 per-item permissions — **item-level SharePoint ACLs are not mirrored**, so
 a document restricted to a subset of a team is visible to that entire
