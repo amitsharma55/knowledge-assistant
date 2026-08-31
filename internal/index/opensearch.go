@@ -12,6 +12,7 @@ import (
 // side in services/chat-api/internal/opensearch/client.go.
 type Doc struct {
 	ID          string    `json:"id"`
+	Team        string    `json:"team"`
 	SpaceKey    string    `json:"spaceKey"`
 	PageID      string    `json:"pageId"`
 	PageTitle   string    `json:"pageTitle"`
@@ -33,6 +34,11 @@ type Indexer struct {
 func (i *Indexer) Bulk(ctx context.Context, docs []Doc) error {
 	if len(docs) == 0 {
 		return nil
+	}
+	for _, d := range docs {
+		if d.Team == "" {
+			return fmt.Errorf("index: refusing to index doc %q with no team", d.ID)
+		}
 	}
 	var buf bytes.Buffer
 	for _, d := range docs {

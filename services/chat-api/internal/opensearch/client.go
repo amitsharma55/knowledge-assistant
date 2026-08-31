@@ -17,7 +17,7 @@ type Client struct {
 	Embedder rag.Embedder
 }
 
-// Search runs k-NN over the embedding field with an ACL post-filter.
+// Search runs k-NN over the embedding field, filtered to the scope's team.
 // TODO(hybrid): switch to `hybrid` query + RRF once the neural-search plugin
 // and a search pipeline are provisioned in the target OpenSearch cluster.
 // For local dev / vanilla OpenSearch, plain k-NN + text match fallback works.
@@ -33,10 +33,13 @@ func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k in
 		"size": k,
 		"query": map[string]any{
 			"knn": map[string]any{
-				"embedding": map[string]any{"vector": vec, "k": k},
+				"embedding": map[string]any{
+					"vector": vec,
+					"k":      k,
+					"filter": scopeFilter(scope),
+				},
 			},
 		},
-		"post_filter": aclFilter(scope.Groups()),
 	}
 	buf, _ := json.Marshal(body)
 	url := fmt.Sprintf("%s/%s/_search", c.BaseURL, c.Index)
@@ -70,9 +73,25 @@ func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k in
 	return chunks, nil
 }
 
-func aclFilter(groups []string) map[string]any {
-	if len(groups) == 0 {
-		return map[string]any{"match_all": map[string]any{}}
+// scopeFilter constrains a kNN search to the scope's team, and to chunks the
+// caller's groups may see. It runs inside the knn clause so that k is applied
+// within the team partition rather than across the whole index.
+func scopeFilter(scope rag.Scope) map[string]any {
+	must := []any{
+		map[string]any{"term": map[string]any{"team": scope.Team().Slug()}},
 	}
-	return map[string]any{"terms": map[string]any{"aclGroups": groups}}
+	if groups := scope.Groups(); len(groups) > 0 {
+		// A chunk with no aclGroups is visible to every member of the team,
+		// matching MemoryStore.aclOK.
+		must = append(must, map[string]any{"bool": map[string]any{
+			"minimum_should_match": 1,
+			"should": []any{
+				map[string]any{"terms": map[string]any{"aclGroups": groups}},
+				map[string]any{"bool": map[string]any{
+					"must_not": map[string]any{"exists": map[string]any{"field": "aclGroups"}},
+				}},
+			},
+		}})
+	}
+	return map[string]any{"bool": map[string]any{"must": must}}
 }

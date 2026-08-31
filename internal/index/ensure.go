@@ -27,6 +27,7 @@ func (i *Indexer) EnsureIndex(ctx context.Context, dim int) error {
 		"mappings": map[string]any{
 			"properties": map[string]any{
 				"id":          map[string]any{"type": "keyword"},
+				"team":        map[string]any{"type": "keyword"},
 				"spaceKey":    map[string]any{"type": "keyword"},
 				"pageId":      map[string]any{"type": "keyword"},
 				"pageTitle":   map[string]any{"type": "text"},
