@@ -19,6 +19,13 @@ type Config struct {
 	EmbedModelID    string
 	TopK            int
 	RerankTopN      int
+	// RelevanceFloor is a raw similarity-score cutoff, not a normalized
+	// probability: MemoryStore reports raw cosine similarity, while
+	// OpenSearch's lucene cosinesimil reports a normalized (1+cos)/2. The
+	// same numeric value therefore means different things in fixtures mode
+	// vs. real OpenSearch, and in any future backend, so this must be tuned
+	// per deployment mode rather than treated as a portable constant.
+	RelevanceFloor float64
 }
 
 func Load() Config {
@@ -36,12 +43,22 @@ func Load() Config {
 		EmbedModelID:    envOr("KA_EMBED_MODEL", "amazon.titan-embed-text-v2:0"),
 		TopK:            envInt("KA_TOP_K", 8),
 		RerankTopN:      envInt("KA_RERANK_TOP_N", 4),
+		RelevanceFloor:  envFloat("KA_RELEVANCE_FLOOR", 0.25),
 	}
 }
 
 func envOr(k, d string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
+	}
+	return d
+}
+
+func envFloat(k string, d float64) float64 {
+	if v := os.Getenv(k); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
 	}
 	return d
 }

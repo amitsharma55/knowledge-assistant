@@ -15,6 +15,7 @@ import (
 )
 
 type Page struct {
+	Team      string
 	SpaceKey  string
 	PageID    string
 	Title     string
@@ -38,7 +39,8 @@ func Ingest(ctx context.Context, p Page, e Embedder, idx *index.Indexer) (int, e
 			return 0, err
 		}
 		docs = append(docs, index.Doc{
-			ID:          docID(p.PageID, c.SectionPath, c.Text),
+			ID:          docID(p.Team, p.PageID, c.SectionPath, c.Text),
+			Team:        p.Team,
 			SpaceKey:    p.SpaceKey,
 			PageID:      p.PageID,
 			PageTitle:   p.Title,
@@ -63,7 +65,8 @@ func Chunks(p Page) []rag.Chunk {
 	var out []rag.Chunk
 	for i, c := range chunker.Split(p.Markdown, 800, 100) {
 		out = append(out, rag.Chunk{
-			ID:          p.PageID + ":" + itoa(i),
+			ID:          p.Team + ":" + p.PageID + ":" + itoa(i),
+			Team:        p.Team,
 			SpaceKey:    p.SpaceKey,
 			PageID:      p.PageID,
 			PageTitle:   p.Title,
@@ -76,14 +79,20 @@ func Chunks(p Page) []rag.Chunk {
 	return out
 }
 
-func docID(pageID, section, text string) string {
+// docID scopes a document's identity to its team, so byte-identical content
+// (shared boilerplate, a copied policy section) in two different teams
+// produces two different ids rather than colliding and overwriting each
+// other in the shared OpenSearch index.
+func docID(team, pageID, section, text string) string {
 	h := sha1.New()
+	h.Write([]byte(team))
+	h.Write([]byte{0})
 	h.Write([]byte(pageID))
 	h.Write([]byte{0})
 	h.Write([]byte(section))
 	h.Write([]byte{0})
 	h.Write([]byte(text))
-	return pageID + ":" + hex.EncodeToString(h.Sum(nil))[:12]
+	return team + ":" + pageID + ":" + hex.EncodeToString(h.Sum(nil))[:12]
 }
 
 func itoa(i int) string {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
 	"github.com/example/knowledge-assistant/internal/rag"
+	"github.com/example/knowledge-assistant/internal/team"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/anthropic"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/bedrock"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/config"
@@ -78,10 +80,15 @@ func main() {
 	}
 
 	orch := &rag.Orchestrator{
-		Retriever: retriever,
-		LLM:       llm,
-		TopK:      cfg.TopK,
-		RerankN:   cfg.RerankTopN,
+		Retriever:      retriever,
+		LLM:            llm,
+		TopK:           cfg.TopK,
+		RerankN:        cfg.RerankTopN,
+		RelevanceFloor: cfg.RelevanceFloor,
+		Log:            log,
+	}
+	if c, ok := retriever.(rag.Counter); ok {
+		orch.Counter = c
 	}
 
 	r := chi.NewRouter()
@@ -110,7 +117,11 @@ func main() {
 		}
 	}
 
-	authed := r.With(middleware.Auth(true /* dev */))
+	registry := team.NewRegistry(team.DefaultInfos())
+	resolver := middleware.StaticResolver{Registry: registry, Members: middleware.DemoMembers()}
+
+	authed := r.With(middleware.Auth(true /* dev */), middleware.WithScope(registry, resolver))
+	authed.Method(http.MethodGet, "/v1/teams", &handler.TeamsHandler{Registry: registry})
 	authed.Method(http.MethodPost, "/v1/chat/messages", &handler.ChatHandler{
 		Orchestrator: orch, Sessions: sessions, Repo: repository, Log: log,
 	})
@@ -143,36 +154,62 @@ func main() {
 	_ = srv.Shutdown(ctx)
 }
 
+// preloadFixtures walks one subdirectory per team under dir (e.g.
+// fixtures/coupa, fixtures/star, fixtures/hr), deriving the team from the
+// directory name and stamping it on every chunk. The directory name is
+// validated against team.Registry before it is trusted as a team: an
+// unregistered directory (stray dir, typo, a macOS ".DS_Store"-as-dir
+// artifact, etc.) must never become a phantom team that gets served
+// through rag.Scope filtering. On such a directory this fails startup
+// outright rather than silently skipping it, so a misnamed or bogus
+// fixtures directory is caught immediately instead of quietly serving an
+// incomplete (or, worse, differently-scoped) corpus.
 func preloadFixtures(ctx context.Context, store *opensearch.MemoryStore, dir string) (int, error) {
-	entries, err := os.ReadDir(dir)
+	registry := team.NewRegistry(team.DefaultInfos())
+	teamDirs, err := os.ReadDir(dir)
 	if err != nil {
 		return 0, err
 	}
 	total := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+	for _, td := range teamDirs {
+		if !td.IsDir() {
 			continue
 		}
-		body, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		teamSlug := td.Name()
+		if _, err := registry.Parse(teamSlug); err != nil {
+			return total, fmt.Errorf("preload fixtures: %q under %q is not a registered team: %w", teamSlug, dir, err)
+		}
+		teamPath := filepath.Join(dir, teamSlug)
+		entries, err := os.ReadDir(teamPath)
 		if err != nil {
 			return total, err
 		}
-		pageID := strings.TrimSuffix(e.Name(), ".md")
-		title := strings.ReplaceAll(pageID, "-", " ")
-		for i, c := range chunker.Split(string(body), 800, 100) {
-			err := store.Upsert(ctx, rag.Chunk{
-				ID:          pageID + ":" + itoa(i),
-				SpaceKey:    "DEMO",
-				PageID:      pageID,
-				PageTitle:   title,
-				SectionPath: c.SectionPath,
-				URL:         "file://" + filepath.Join(dir, e.Name()),
-				Text:        c.Text,
-			})
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			body, err := os.ReadFile(filepath.Join(teamPath, e.Name()))
 			if err != nil {
 				return total, err
 			}
-			total++
+			pageID := strings.TrimSuffix(e.Name(), ".md")
+			title := strings.ReplaceAll(pageID, "-", " ")
+			for i, c := range chunker.Split(string(body), 800, 100) {
+				err := store.Upsert(ctx, rag.Chunk{
+					ID:          teamSlug + ":" + pageID + ":" + itoa(i),
+					Team:        teamSlug,
+					SpaceKey:    "DEMO",
+					PageID:      pageID,
+					PageTitle:   title,
+					SectionPath: c.SectionPath,
+					URL:         "file://" + filepath.Join(teamPath, e.Name()),
+					Text:        c.Text,
+				})
+				if err != nil {
+					return total, err
+				}
+				total++
+			}
 		}
 	}
 	return total, nil

@@ -1,38 +1,44 @@
-const headers = () => ({ 'X-Dev-Groups': 'everyone' });
+const headers = (team) => ({ 'X-Dev-Groups': 'everyone', ...(team ? { 'X-Team': team } : {}) });
 
-export async function listChats() {
-  const res = await fetch('/v1/chats', { headers: headers() });
+export async function listTeams() {
+  const res = await fetch('/v1/teams', { headers: headers() });
+  if (!res.ok) throw new Error('list teams failed');
+  return res.json();
+}
+
+export async function listChats(team) {
+  const res = await fetch('/v1/chats', { headers: headers(team) });
   if (!res.ok) throw new Error('list chats failed');
   return res.json();
 }
 
-export async function getMessages(chatId) {
-  const res = await fetch(`/v1/chats/${chatId}/messages`, { headers: headers() });
+export async function getMessages(chatId, team) {
+  const res = await fetch(`/v1/chats/${chatId}/messages`, { headers: headers(team) });
   if (!res.ok) throw new Error('get messages failed');
   return res.json();
 }
 
-export async function deleteChat(chatId) {
-  const res = await fetch(`/v1/chats/${chatId}`, { method: 'DELETE', headers: headers() });
+export async function deleteChat(chatId, team) {
+  const res = await fetch(`/v1/chats/${chatId}`, { method: 'DELETE', headers: headers(team) });
   if (!res.ok) throw new Error('delete chat failed');
 }
 
-export async function uploadFile(file, sessionId, persist) {
+export async function uploadFile(file, sessionId, persist, team) {
   const fd = new FormData();
   fd.append('file', file);
   fd.append('sessionId', sessionId);
   fd.append('persist', persist ? 'true' : 'false');
-  const res = await fetch('/v1/uploads', { method: 'POST', headers: headers(), body: fd });
+  const res = await fetch('/v1/uploads', { method: 'POST', headers: headers(team), body: fd });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 // streamChat POSTs a message and yields SSE events one at a time.
-// Consumer handles { type: 'chat'|'citation'|'token'|'done'|'error', data }.
-export async function* streamChat({ chatId, sessionId, message }) {
+// Consumer handles { type: 'chat'|'retrieval'|'citation'|'token'|'suggestion'|'done'|'error', data }.
+export async function* streamChat({ chatId, sessionId, message, team }) {
   const res = await fetch('/v1/chat/messages', {
     method: 'POST',
-    headers: { ...headers(), 'Content-Type': 'application/json' },
+    headers: { ...headers(team), 'Content-Type': 'application/json' },
     body: JSON.stringify({ chatId, sessionId, message }),
   });
   if (!res.ok || !res.body) throw new Error('stream failed');

@@ -17,11 +17,14 @@ type Client struct {
 	Embedder rag.Embedder
 }
 
-// Search runs k-NN over the embedding field with an ACL post-filter.
+// Search runs k-NN over the embedding field, filtered to the scope's team.
 // TODO(hybrid): switch to `hybrid` query + RRF once the neural-search plugin
 // and a search pipeline are provisioned in the target OpenSearch cluster.
 // For local dev / vanilla OpenSearch, plain k-NN + text match fallback works.
-func (c *Client) Search(ctx context.Context, query string, groups []string, k int) ([]rag.Chunk, error) {
+func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k int) ([]rag.Chunk, error) {
+	if scope.IsZero() {
+		return nil, fmt.Errorf("opensearch: search called with an unscoped request")
+	}
 	vec, err := c.Embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
@@ -30,10 +33,13 @@ func (c *Client) Search(ctx context.Context, query string, groups []string, k in
 		"size": k,
 		"query": map[string]any{
 			"knn": map[string]any{
-				"embedding": map[string]any{"vector": vec, "k": k},
+				"embedding": map[string]any{
+					"vector": vec,
+					"k":      k,
+					"filter": scopeFilter(scope),
+				},
 			},
 		},
-		"post_filter": aclFilter(groups),
 	}
 	buf, _ := json.Marshal(body)
 	url := fmt.Sprintf("%s/%s/_search", c.BaseURL, c.Index)
@@ -67,9 +73,54 @@ func (c *Client) Search(ctx context.Context, query string, groups []string, k in
 	return chunks, nil
 }
 
-func aclFilter(groups []string) map[string]any {
-	if len(groups) == 0 {
-		return map[string]any{"match_all": map[string]any{}}
+// Count reports how many chunks in the scope's team score at or above floor
+// against the query, without returning any of them. It backs the no-results
+// escape hatch; this path only runs when an answer found nothing, so the
+// extra kNN round trip is acceptable. It reuses scopeFilter so the team and
+// ACL constraints are identical to Search's.
+func (c *Client) Count(ctx context.Context, query string, scope rag.Scope, floor float64) (int, error) {
+	hits, err := c.Search(ctx, query, scope, 1000)
+	if err != nil {
+		return 0, err
 	}
-	return map[string]any{"terms": map[string]any{"aclGroups": groups}}
+	n := 0
+	for _, h := range hits {
+		if h.Score >= floor {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// scopeFilter constrains a kNN search to the scope's team, and to chunks the
+// caller's groups may see. It runs inside the knn clause so that k is applied
+// within the team partition rather than across the whole index.
+func scopeFilter(scope rag.Scope) map[string]any {
+	must := []any{
+		map[string]any{"term": map[string]any{"team": scope.Team().Slug()}},
+	}
+	// The ACL clause is always emitted, even when the caller belongs to zero
+	// groups. With an empty groups slice, the "terms" should-clause matches
+	// nothing, so minimum_should_match:1 leaves only the "no aclGroups field"
+	// branch — i.e. only unrestricted chunks are visible. That matches
+	// MemoryStore.aclOK(chunkGroups, userGroups), which denies whenever
+	// userGroups is empty and chunkGroups is non-empty.
+	groups := scope.Groups()
+	if groups == nil {
+		// A nil slice marshals to JSON null, which OpenSearch's "terms"
+		// query rejects with a parse error. Normalize to an empty slice so
+		// it marshals to [] and the should-clause below simply matches no
+		// groups, per the comment above.
+		groups = []string{}
+	}
+	must = append(must, map[string]any{"bool": map[string]any{
+		"minimum_should_match": 1,
+		"should": []any{
+			map[string]any{"terms": map[string]any{"aclGroups": groups}},
+			map[string]any{"bool": map[string]any{
+				"must_not": map[string]any{"exists": map[string]any{"field": "aclGroups"}},
+			}},
+		},
+	}})
+	return map[string]any{"bool": map[string]any{"must": must}}
 }

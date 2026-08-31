@@ -15,6 +15,7 @@ import (
 	"github.com/example/knowledge-assistant/internal/chunker"
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
+	"github.com/example/knowledge-assistant/internal/team"
 	"github.com/example/knowledge-assistant/services/ingestion/internal/gitlab"
 	"github.com/example/knowledge-assistant/services/ingestion/internal/storage"
 )
@@ -23,6 +24,7 @@ func main() {
 	source := flag.String("source", "gitlab", "gitlab | fixtures")
 	space := flag.String("space", "", "fixture space label (fixtures mode only)")
 	fixturesDir := flag.String("fixtures", "fixtures", "directory of *.md files when source=fixtures")
+	teamSlug := flag.String("team", "", "team to stamp on every indexed doc (required; one of coupa, star, hr)")
 	osURL := flag.String("opensearch", envOr("KA_OPENSEARCH_URL", "http://localhost:9200"), "OpenSearch URL")
 	osIdx := flag.String("index", envOr("KA_OPENSEARCH_INDEX", "kb-chunks"), "OpenSearch index")
 	dataDir := flag.String("data", envOr("KA_DATA_DIR", ".data"), "local snapshot dir (stand-in for S3)")
@@ -31,15 +33,22 @@ func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	ctx := context.Background()
 
+	registry := team.NewRegistry(team.DefaultInfos())
+	tm, err := registry.Parse(*teamSlug)
+	if err != nil {
+		log.Error("missing or unknown -team flag; team is required and is never inferred from file content or path", "team", *teamSlug, "err", err)
+		os.Exit(2)
+	}
+
 	store := storage.LocalDisk{Root: *dataDir}
 	embedder := embed.Mock{Dim: 1024}
 	idxr := &index.Indexer{BaseURL: *osURL, Index: *osIdx, HTTP: &http.Client{Timeout: 30 * time.Second}}
 	if err := idxr.EnsureIndex(ctx, 1024); err != nil {
-		log.Warn("ensure index failed (OpenSearch running?)", "err", err)
+		log.Error("ensure index failed; refusing to ingest into a stale/invalid index", "err", err)
+		os.Exit(1)
 	}
 
 	var pages []page
-	var err error
 
 	switch *source {
 	case "fixtures":
@@ -82,7 +91,8 @@ func main() {
 				continue
 			}
 			docs = append(docs, index.Doc{
-				ID:          docID(p.ID, c.SectionPath, c.Text),
+				ID:          docID(tm.Slug(), p.ID, c.SectionPath, c.Text),
+				Team:        tm.Slug(),
 				SpaceKey:    p.SpaceKey,
 				PageID:      p.ID,
 				PageTitle:   p.Title,
@@ -96,7 +106,8 @@ func main() {
 	}
 
 	if err := idxr.Bulk(ctx, docs); err != nil {
-		log.Warn("bulk index failed (OpenSearch running?)", "err", err)
+		log.Error("bulk index failed; job must not report success after indexing nothing", "err", err)
+		os.Exit(1)
 	}
 	log.Info("ingest complete", "source", *source, "pages", len(pages), "chunks", len(docs))
 }
@@ -142,14 +153,20 @@ func loadFixtures(dir, space string) ([]page, error) {
 	return pages, nil
 }
 
-func docID(pageID, section, text string) string {
+// docID scopes a document's identity to its team, so byte-identical content
+// (shared boilerplate, a copied policy section) in two different teams
+// produces two different ids rather than colliding and overwriting each
+// other in the shared OpenSearch index.
+func docID(team, pageID, section, text string) string {
 	h := sha1.New()
+	h.Write([]byte(team))
+	h.Write([]byte{0})
 	h.Write([]byte(pageID))
 	h.Write([]byte{0})
 	h.Write([]byte(section))
 	h.Write([]byte{0})
 	h.Write([]byte(text))
-	return pageID + ":" + hex.EncodeToString(h.Sum(nil))[:12]
+	return team + ":" + pageID + ":" + hex.EncodeToString(h.Sum(nil))[:12]
 }
 
 func envOr(k, d string) string {

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/example/knowledge-assistant/internal/rag"
+	"github.com/example/knowledge-assistant/services/chat-api/internal/middleware"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/repo"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/session"
 )
@@ -46,14 +47,18 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	userGroups := groupsFromCtx(r)
-	uid := userID(r)
+	scope, ok := middleware.ScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, "no team scope", http.StatusForbidden)
+		return
+	}
+	uid := middleware.UserFromContext(r.Context())
 
 	// Ensure a persistent chat exists. Auto-title from first message.
 	var chat repo.Chat
 	if h.Repo != nil {
 		if req.ChatID == "" {
-			c, err := h.Repo.CreateChat(r.Context(), uid, autoTitle(req.Message))
+			c, err := h.Repo.CreateChat(r.Context(), uid, scope.Team().Slug(), autoTitle(req.Message))
 			if err != nil {
 				http.Error(w, "create chat: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -63,6 +68,17 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "event: chat\ndata: %s\n\n", payload)
 			flusher.Flush()
 		} else {
+			ok, err := h.Repo.ChatBelongsTo(r.Context(), uid, scope.Team().Slug(), req.ChatID)
+			if err != nil {
+				http.Error(w, "lookup chat: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if !ok {
+				// Matches the cross-team behaviour elsewhere: don't reveal
+				// whether the chat exists, just refuse it.
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
 			chat.ID = req.ChatID
 		}
 		if _, err := h.Repo.AppendMessage(r.Context(), chat.ID, "user", req.Message, nil); err != nil {
@@ -72,13 +88,13 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var sessRetriever rag.Retriever
 	if h.Sessions != nil && req.SessionID != "" {
-		sessRetriever = h.Sessions.Retriever(req.SessionID)
+		sessRetriever = h.Sessions.Retriever(uid, req.SessionID, scope.Team().Slug())
 	}
 
 	events := make(chan rag.StreamEvent, 32)
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- h.Orchestrator.Answer(r.Context(), req.Message, userGroups, sessRetriever, events)
+		errCh <- h.Orchestrator.Answer(r.Context(), req.Message, scope, sessRetriever, events)
 		close(events)
 	}()
 
@@ -119,14 +135,3 @@ func autoTitle(msg string) string {
 	}
 	return msg
 }
-
-func groupsFromCtx(r *http.Request) []string {
-	if v := r.Context().Value(ctxGroupsKey{}); v != nil {
-		if gs, ok := v.([]string); ok {
-			return gs
-		}
-	}
-	return nil
-}
-
-type ctxGroupsKey struct{}

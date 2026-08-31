@@ -17,7 +17,7 @@ export default function Thread({ messages, streaming, onSuggest }) {
         <div className="max-w-md text-center">
           <h2 className="text-lg font-semibold text-slate-700 mb-2">Ask about your integrations</h2>
           <p className="text-sm text-slate-500 mb-4">
-            Answers come from your Confluence knowledge base. You can also attach a PDF or markdown file.
+            Answers come from your team's documentation. You can also attach a PDF or markdown file.
           </p>
           <div className="flex flex-col gap-2 text-left">
             {suggestions.map(s => (
