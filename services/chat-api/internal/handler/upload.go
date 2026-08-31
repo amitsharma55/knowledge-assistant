@@ -79,6 +79,7 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no team scope", http.StatusForbidden)
 		return
 	}
+	uid := middleware.UserFromContext(r.Context())
 
 	uploadID := uuid.NewString()
 	page := ingest.Page{
@@ -96,7 +97,7 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if sessionID != "" && h.Sessions != nil {
 		chunks := ingest.Chunks(page)
 		up := session.Upload{ID: uploadID, Filename: hdr.Filename, Bytes: len(data), Chunks: len(chunks)}
-		if err := h.Sessions.Add(r.Context(), sessionID, scope.Team().Slug(), up, chunks); err != nil {
+		if err := h.Sessions.Add(r.Context(), uid, sessionID, scope.Team().Slug(), up, chunks); err != nil {
 			http.Error(w, "session store failed", http.StatusInternalServerError)
 			return
 		}

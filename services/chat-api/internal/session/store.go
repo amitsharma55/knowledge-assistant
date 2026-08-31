@@ -38,14 +38,19 @@ func NewStore(e rag.Embedder, ttl time.Duration) *Store {
 	return s
 }
 
-// key scopes a session's uploads to the team they were made under, so an
-// upload cannot surface in a different team's retrieval.
-func key(sessionID, teamSlug string) string { return sessionID + "\x00" + teamSlug }
+// key scopes a session's uploads to the user who made them and the team they
+// were made under, so an upload cannot surface in a different team's
+// retrieval, and — critically — cannot surface for a different user who
+// happens to learn or guess the same sessionID. sessionID alone carries no
+// ownership predicate; userID is what makes this a real access boundary.
+func key(userID, sessionID, teamSlug string) string {
+	return userID + "\x00" + sessionID + "\x00" + teamSlug
+}
 
 // Add creates or updates the session's memory retriever with these chunks.
-func (s *Store) Add(ctx context.Context, sessionID, teamSlug string, u Upload, chunks []rag.Chunk) error {
+func (s *Store) Add(ctx context.Context, userID, sessionID, teamSlug string, u Upload, chunks []rag.Chunk) error {
 	s.mu.Lock()
-	k := key(sessionID, teamSlug)
+	k := key(userID, sessionID, teamSlug)
 	e, ok := s.sessions[k]
 	if !ok {
 		e = &entry{store: opensearch.NewMemoryStore(s.embedder)}
@@ -62,12 +67,12 @@ func (s *Store) Add(ctx context.Context, sessionID, teamSlug string, u Upload, c
 	return nil
 }
 
-// Retriever returns the session's retriever for this team, or nil if the
-// session has no uploads under that team.
-func (s *Store) Retriever(sessionID, teamSlug string) rag.Retriever {
+// Retriever returns the session's retriever for this user and team, or nil
+// if that user has no uploads in this session under that team.
+func (s *Store) Retriever(userID, sessionID, teamSlug string) rag.Retriever {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e, ok := s.sessions[key(sessionID, teamSlug)]
+	e, ok := s.sessions[key(userID, sessionID, teamSlug)]
 	if !ok {
 		return nil
 	}
