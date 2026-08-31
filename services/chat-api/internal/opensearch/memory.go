@@ -79,6 +79,16 @@ func (m *MemoryStore) Search(ctx context.Context, query string, scope rag.Scope,
 	return out, nil
 }
 
+// Count reports how many chunks in the scope's team the query would match,
+// without returning any of them.
+func (m *MemoryStore) Count(ctx context.Context, query string, scope rag.Scope) (int, error) {
+	hits, err := m.Search(ctx, query, scope, 1000)
+	if err != nil {
+		return 0, err
+	}
+	return len(hits), nil
+}
+
 func aclOK(chunkGroups, userGroups []string) bool {
 	if len(chunkGroups) == 0 {
 		return true

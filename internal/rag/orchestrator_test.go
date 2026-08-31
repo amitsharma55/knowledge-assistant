@@ -113,3 +113,91 @@ func TestRetrievalEventPrecedesCitations(t *testing.T) {
 		}
 	}
 }
+
+type stubCounter struct{ counts map[string]int }
+
+func (s stubCounter) Count(_ context.Context, _ string, scope Scope) (int, error) {
+	return s.counts[scope.Team().Slug()], nil
+}
+
+func multiTeamScope(t *testing.T) Scope {
+	t.Helper()
+	reg := team.NewRegistry(team.DefaultInfos())
+	star, _ := reg.Parse("star")
+	hr, _ := reg.Parse("hr")
+	return NewScope(star, []team.Team{star, hr}, nil)
+}
+
+func TestSuggestsOtherTeamsWhenNothingIsFound(t *testing.T) {
+	llm := &capturingLLM{}
+	o := &Orchestrator{
+		Retriever: stubRetriever{nil},
+		Counter:   stubCounter{counts: map[string]int{"hr": 3}},
+		LLM:       llm, TopK: 6, RerankN: 4,
+	}
+
+	out := make(chan StreamEvent, 64)
+	go func() {
+		if err := o.Answer(context.Background(), "leave policy", multiTeamScope(t), nil, out); err != nil {
+			t.Errorf("Answer: %v", err)
+		}
+		close(out)
+	}()
+
+	var suggestions []TeamSuggestion
+	for e := range out {
+		if e.Type == "suggestion" {
+			suggestions = e.Data.([]TeamSuggestion)
+		}
+	}
+	if len(suggestions) != 1 {
+		t.Fatalf("got %d suggestions, want 1 (hr)", len(suggestions))
+	}
+	if suggestions[0].Team != "hr" || suggestions[0].Matches != 3 {
+		t.Errorf("suggestion = %+v, want hr with 3 matches", suggestions[0])
+	}
+}
+
+func TestSuggestionsCarryNoContentFromOtherTeams(t *testing.T) {
+	llm := &capturingLLM{}
+	o := &Orchestrator{
+		Retriever: stubRetriever{nil},
+		Counter:   stubCounter{counts: map[string]int{"hr": 3}},
+		LLM:       llm, TopK: 6, RerankN: 4,
+	}
+	out := make(chan StreamEvent, 64)
+	go func() {
+		_ = o.Answer(context.Background(), "leave policy", multiTeamScope(t), nil, out)
+		close(out)
+	}()
+	for e := range out {
+		if e.Type != "suggestion" {
+			continue
+		}
+		for _, s := range e.Data.([]TeamSuggestion) {
+			// TeamSuggestion must expose counts only: no titles, no text.
+			if s.Team == "" || s.Matches == 0 {
+				t.Errorf("malformed suggestion %+v", s)
+			}
+		}
+	}
+}
+
+func TestNoSuggestionsWhenResultsWereFound(t *testing.T) {
+	llm := &capturingLLM{}
+	o := &Orchestrator{
+		Retriever: stubRetriever{sixChunks()},
+		Counter:   stubCounter{counts: map[string]int{"hr": 3}},
+		LLM:       llm, TopK: 6, RerankN: 4,
+	}
+	out := make(chan StreamEvent, 64)
+	go func() {
+		_ = o.Answer(context.Background(), "invoice sync", multiTeamScope(t), nil, out)
+		close(out)
+	}()
+	for e := range out {
+		if e.Type == "suggestion" {
+			t.Error("suggestions emitted even though the active team had results")
+		}
+	}
+}

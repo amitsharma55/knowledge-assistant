@@ -6,10 +6,12 @@ import (
 )
 
 type Orchestrator struct {
-	Retriever Retriever
-	LLM       LLM
-	TopK      int
-	RerankN   int
+	Retriever      Retriever
+	LLM            LLM
+	TopK           int
+	RerankN        int
+	Counter        Counter
+	RelevanceFloor float64
 }
 
 // Answer runs the full retrieve → prompt → stream pipeline. If `session` is
@@ -60,6 +62,23 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, scope Scope,
 		}
 	}
 
+	// Nothing relevant here: tell the caller whether another of their teams
+	// can answer, without retrieving anything from it.
+	if o.Counter != nil && belowFloor(chosen, o.RelevanceFloor) {
+		var suggestions []TeamSuggestion
+		for _, other := range scope.Others() {
+			probe := NewScope(other, nil, scope.Groups())
+			n, err := o.Counter.Count(ctx, question, probe)
+			if err != nil || n == 0 {
+				continue
+			}
+			suggestions = append(suggestions, TeamSuggestion{Team: other.Slug(), Matches: n})
+		}
+		if len(suggestions) > 0 {
+			out <- StreamEvent{Type: "suggestion", Data: suggestions}
+		}
+	}
+
 	out <- StreamEvent{Type: "retrieval", Data: mark(all, chosen)}
 	out <- StreamEvent{Type: "citation", Data: chosen}
 	prompt := BuildPrompt(question, chosen)
@@ -68,6 +87,19 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, scope Scope,
 	}
 	out <- StreamEvent{Type: "done"}
 	return nil
+}
+
+// belowFloor reports whether retrieval found nothing worth grounding on.
+func belowFloor(chosen []Chunk, floor float64) bool {
+	if len(chosen) == 0 {
+		return true
+	}
+	for _, c := range chosen {
+		if c.Score >= floor {
+			return false
+		}
+	}
+	return true
 }
 
 // mark labels each retrieved chunk with whether it reached the prompt.

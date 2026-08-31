@@ -41,3 +41,17 @@ type LLM interface {
 	// Stream sends events to out until the completion ends. Callers close out.
 	Stream(ctx context.Context, prompt string, out chan<- StreamEvent) error
 }
+
+// Counter reports how many chunks a query would match in a scope, without
+// returning any of them. It backs the no-results escape hatch, which tells a
+// multi-team user that their question is answerable under another of their
+// teams while leaking nothing but a count.
+type Counter interface {
+	Count(ctx context.Context, query string, scope Scope) (int, error)
+}
+
+// TeamSuggestion is a count only. It must never carry chunk text or titles.
+type TeamSuggestion struct {
+	Team    string `json:"team"`
+	Matches int    `json:"matches"`
+}

@@ -79,10 +79,14 @@ func main() {
 	}
 
 	orch := &rag.Orchestrator{
-		Retriever: retriever,
-		LLM:       llm,
-		TopK:      cfg.TopK,
-		RerankN:   cfg.RerankTopN,
+		Retriever:      retriever,
+		LLM:            llm,
+		TopK:           cfg.TopK,
+		RerankN:        cfg.RerankTopN,
+		RelevanceFloor: cfg.RelevanceFloor,
+	}
+	if c, ok := retriever.(rag.Counter); ok {
+		orch.Counter = c
 	}
 
 	r := chi.NewRouter()

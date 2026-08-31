@@ -19,6 +19,7 @@ type Config struct {
 	EmbedModelID    string
 	TopK            int
 	RerankTopN      int
+	RelevanceFloor  float64
 }
 
 func Load() Config {
@@ -36,12 +37,22 @@ func Load() Config {
 		EmbedModelID:    envOr("KA_EMBED_MODEL", "amazon.titan-embed-text-v2:0"),
 		TopK:            envInt("KA_TOP_K", 8),
 		RerankTopN:      envInt("KA_RERANK_TOP_N", 4),
+		RelevanceFloor:  envFloat("KA_RELEVANCE_FLOOR", 0.25),
 	}
 }
 
 func envOr(k, d string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
+	}
+	return d
+}
+
+func envFloat(k string, d float64) float64 {
+	if v := os.Getenv(k); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
 	}
 	return d
 }
