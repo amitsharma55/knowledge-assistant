@@ -25,8 +25,16 @@ type Embedder interface {
 
 // StreamEvent is one token or metadata payload streamed to the client.
 type StreamEvent struct {
-	Type string `json:"type"` // "token" | "citation" | "done" | "error"
+	Type string `json:"type"` // "retrieval" | "token" | "citation" | "done" | "error"
 	Data any    `json:"data"`
+}
+
+// RetrievedChunk is a chunk as shown in the UI's context panel. Used reports
+// whether it was passed to the model; chunks that were retrieved and then cut
+// are the most useful signal when an answer is wrong, so they are sent too.
+type RetrievedChunk struct {
+	Chunk
+	Used bool `json:"used"`
 }
 
 type LLM interface {
