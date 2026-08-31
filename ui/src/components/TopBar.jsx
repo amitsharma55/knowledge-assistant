@@ -1,4 +1,4 @@
-export default function TopBar({ title, onNewChat }) {
+export default function TopBar({ title, onNewChat, teams, team, onTeamChange }) {
   return (
     <header className="h-14 border-b border-slate-200 bg-white flex items-center px-4 gap-4">
       <div className="flex items-center gap-2">
@@ -7,6 +7,12 @@ export default function TopBar({ title, onNewChat }) {
         </div>
         <span className="font-semibold text-slate-800">Knowledge Assistant</span>
       </div>
+      <select
+        value={team ?? ''}
+        onChange={e => onTeamChange(e.target.value)}
+        className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white">
+        {teams.map(t => <option key={t.slug} value={t.slug}>{t.displayName}</option>)}
+      </select>
       <div className="flex-1 text-sm text-slate-500 truncate">{title}</div>
       <button
         onClick={onNewChat}
