@@ -15,12 +15,12 @@ type Orchestrator struct {
 // Answer runs the full retrieve → prompt → stream pipeline. If `session` is
 // non-nil, its chunks are included first (user's uploaded doc = explicit
 // intent), then filled with the primary retriever's chunks up to RerankN.
-func (o *Orchestrator) Answer(ctx context.Context, question string, userGroups []string, session Retriever, out chan<- StreamEvent) error {
+func (o *Orchestrator) Answer(ctx context.Context, question string, scope Scope, session Retriever, out chan<- StreamEvent) error {
 	var chosen []Chunk
 	seen := map[string]struct{}{}
 
 	if session != nil {
-		sc, err := session.Search(ctx, question, userGroups, o.RerankN)
+		sc, err := session.Search(ctx, question, scope, o.RerankN)
 		if err == nil {
 			for _, c := range sc {
 				if _, dup := seen[c.ID]; dup {
@@ -36,7 +36,7 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, userGroups [
 	}
 
 	if len(chosen) < o.RerankN {
-		kb, err := o.Retriever.Search(ctx, question, userGroups, o.TopK)
+		kb, err := o.Retriever.Search(ctx, question, scope, o.TopK)
 		if err != nil {
 			return fmt.Errorf("retrieve: %w", err)
 		}

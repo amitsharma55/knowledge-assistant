@@ -2,6 +2,7 @@ package opensearch
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sort"
 	"sync"
@@ -41,7 +42,10 @@ func (m *MemoryStore) Upsert(ctx context.Context, c rag.Chunk) error {
 	return nil
 }
 
-func (m *MemoryStore) Search(ctx context.Context, query string, groups []string, k int) ([]rag.Chunk, error) {
+func (m *MemoryStore) Search(ctx context.Context, query string, scope rag.Scope, k int) ([]rag.Chunk, error) {
+	if scope.IsZero() {
+		return nil, errors.New("opensearch: search called with an unscoped request")
+	}
 	qv, err := m.Embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, err
@@ -53,8 +57,12 @@ func (m *MemoryStore) Search(ctx context.Context, query string, groups []string,
 		s float64
 	}
 	results := make([]scored, 0, len(m.items))
+	want := scope.Team().Slug()
 	for _, it := range m.items {
-		if !aclOK(it.chunk.ACLGroups, groups) {
+		if it.chunk.Team != want {
+			continue
+		}
+		if !aclOK(it.chunk.ACLGroups, scope.Groups()) {
 			continue
 		}
 		results = append(results, scored{it.chunk, cosine(qv, it.vec)})

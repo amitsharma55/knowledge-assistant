@@ -21,7 +21,10 @@ type Client struct {
 // TODO(hybrid): switch to `hybrid` query + RRF once the neural-search plugin
 // and a search pipeline are provisioned in the target OpenSearch cluster.
 // For local dev / vanilla OpenSearch, plain k-NN + text match fallback works.
-func (c *Client) Search(ctx context.Context, query string, groups []string, k int) ([]rag.Chunk, error) {
+func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k int) ([]rag.Chunk, error) {
+	if scope.IsZero() {
+		return nil, fmt.Errorf("opensearch: search called with an unscoped request")
+	}
 	vec, err := c.Embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
@@ -33,7 +36,7 @@ func (c *Client) Search(ctx context.Context, query string, groups []string, k in
 				"embedding": map[string]any{"vector": vec, "k": k},
 			},
 		},
-		"post_filter": aclFilter(groups),
+		"post_filter": aclFilter(scope.Groups()),
 	}
 	buf, _ := json.Marshal(body)
 	url := fmt.Sprintf("%s/%s/_search", c.BaseURL, c.Index)

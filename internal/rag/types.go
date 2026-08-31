@@ -4,6 +4,7 @@ import "context"
 
 type Chunk struct {
 	ID          string   `json:"id"`
+	Team        string   `json:"team"`
 	SpaceKey    string   `json:"spaceKey"`
 	PageID      string   `json:"pageId"`
 	PageTitle   string   `json:"pageTitle"`
@@ -15,7 +16,7 @@ type Chunk struct {
 }
 
 type Retriever interface {
-	Search(ctx context.Context, query string, groups []string, k int) ([]Chunk, error)
+	Search(ctx context.Context, query string, scope Scope, k int) ([]Chunk, error)
 }
 
 type Embedder interface {
