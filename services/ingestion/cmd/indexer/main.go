@@ -44,7 +44,8 @@ func main() {
 	embedder := embed.Mock{Dim: 1024}
 	idxr := &index.Indexer{BaseURL: *osURL, Index: *osIdx, HTTP: &http.Client{Timeout: 30 * time.Second}}
 	if err := idxr.EnsureIndex(ctx, 1024); err != nil {
-		log.Warn("ensure index failed (OpenSearch running?)", "err", err)
+		log.Error("ensure index failed; refusing to ingest into a stale/invalid index", "err", err)
+		os.Exit(1)
 	}
 
 	var pages []page
@@ -105,7 +106,8 @@ func main() {
 	}
 
 	if err := idxr.Bulk(ctx, docs); err != nil {
-		log.Warn("bulk index failed (OpenSearch running?)", "err", err)
+		log.Error("bulk index failed; job must not report success after indexing nothing", "err", err)
+		os.Exit(1)
 	}
 	log.Info("ingest complete", "source", *source, "pages", len(pages), "chunks", len(docs))
 }
