@@ -70,6 +70,13 @@ func TestScopeFilterZeroGroupsStillConstrainsACL(t *testing.T) {
 	if !strings.Contains(string(raw), `"aclGroups"`) {
 		t.Fatalf("zero-group scope produced a filter with no aclGroups constraint at all, so every doc in the team (including ACL-restricted ones) is visible: %s", raw)
 	}
+	// scope.Groups() is nil (not []string{}) in this case. A nil slice
+	// marshals to JSON null, which OpenSearch's "terms" query rejects with a
+	// parse error. The marshalled JSON must contain "aclGroups":[] , not
+	// "aclGroups":null.
+	if !strings.Contains(string(raw), `"aclGroups":[]`) {
+		t.Fatalf("zero-group scope must marshal aclGroups as [] not null (OpenSearch rejects null in a terms query): %s", raw)
+	}
 }
 
 // containsTermTeam walks the filter looking for {"term":{"team":<slug>}} that

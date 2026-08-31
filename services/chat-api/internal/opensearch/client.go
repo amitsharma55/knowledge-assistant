@@ -106,6 +106,13 @@ func scopeFilter(scope rag.Scope) map[string]any {
 	// MemoryStore.aclOK(chunkGroups, userGroups), which denies whenever
 	// userGroups is empty and chunkGroups is non-empty.
 	groups := scope.Groups()
+	if groups == nil {
+		// A nil slice marshals to JSON null, which OpenSearch's "terms"
+		// query rejects with a parse error. Normalize to an empty slice so
+		// it marshals to [] and the should-clause below simply matches no
+		// groups, per the comment above.
+		groups = []string{}
+	}
 	must = append(must, map[string]any{"bool": map[string]any{
 		"minimum_should_match": 1,
 		"should": []any{
