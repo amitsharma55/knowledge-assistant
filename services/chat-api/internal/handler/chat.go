@@ -68,6 +68,17 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "event: chat\ndata: %s\n\n", payload)
 			flusher.Flush()
 		} else {
+			ok, err := h.Repo.ChatBelongsTo(r.Context(), uid, scope.Team().Slug(), req.ChatID)
+			if err != nil {
+				http.Error(w, "lookup chat: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if !ok {
+				// Matches the cross-team behaviour elsewhere: don't reveal
+				// whether the chat exists, just refuse it.
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
 			chat.ID = req.ChatID
 		}
 		if _, err := h.Repo.AppendMessage(r.Context(), chat.ID, "user", req.Message, nil); err != nil {

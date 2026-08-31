@@ -64,15 +64,15 @@ func (r *Repo) CreateChat(ctx context.Context, userID, teamSlug, title string) (
 	return c, err
 }
 
-// ListChats returns the user's chats under the given team, most recently
-// updated first.
-func (r *Repo) ListChats(ctx context.Context, userID, teamSlug string) ([]Chat, error) {
+// ListChats returns the user's chats under the given team that were updated
+// in the last `days` days, most recently updated first.
+func (r *Repo) ListChats(ctx context.Context, userID, teamSlug string, days int) ([]Chat, error) {
 	rows, err := r.Pool.Query(ctx,
 		`SELECT id, user_id, team, title, created_at, updated_at
 		 FROM chats
-		 WHERE user_id = $1 AND team = $2
+		 WHERE user_id = $1 AND team = $2 AND updated_at >= NOW() - ($3 || ' days')::interval
 		 ORDER BY updated_at DESC`,
-		userID, teamSlug,
+		userID, teamSlug, fmt.Sprintf("%d", days),
 	)
 	if err != nil {
 		return nil, err
@@ -114,6 +114,22 @@ func (r *Repo) DeleteChat(ctx context.Context, userID, teamSlug, chatID string) 
 		`DELETE FROM chats WHERE id = $3 AND user_id = $1 AND team = $2`,
 		userID, teamSlug, chatID)
 	return err
+}
+
+// ChatBelongsTo reports whether chatID exists, is owned by userID, and
+// belongs to teamSlug. Callers that accept a client-supplied chat ID (e.g.
+// to continue an existing conversation) must call this before reading or
+// appending anything to that chat — otherwise any authenticated caller who
+// learns a chat's UUID (browser history, a shared link, logs) could act on
+// a stranger's chat, in any team, just by naming its ID.
+func (r *Repo) ChatBelongsTo(ctx context.Context, userID, teamSlug, chatID string) (bool, error) {
+	var owner, team string
+	err := r.Pool.QueryRow(ctx,
+		`SELECT user_id, team FROM chats WHERE id = $1`, chatID).Scan(&owner, &team)
+	if err != nil {
+		return false, nil
+	}
+	return owner == userID && team == teamSlug, nil
 }
 
 // AppendMessage writes a message and bumps the chat's updated_at.

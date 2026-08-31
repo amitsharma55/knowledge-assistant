@@ -21,7 +21,7 @@ func (h *ChatsHandler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no team scope", http.StatusForbidden)
 		return
 	}
-	chats, err := h.Repo.ListChats(r.Context(), middleware.UserFromContext(r.Context()), scope.Team().Slug())
+	chats, err := h.Repo.ListChats(r.Context(), middleware.UserFromContext(r.Context()), scope.Team().Slug(), 30)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
