@@ -15,6 +15,7 @@ import (
 	"github.com/example/knowledge-assistant/internal/chunker"
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
+	"github.com/example/knowledge-assistant/internal/team"
 	"github.com/example/knowledge-assistant/services/ingestion/internal/gitlab"
 	"github.com/example/knowledge-assistant/services/ingestion/internal/storage"
 )
@@ -23,6 +24,7 @@ func main() {
 	source := flag.String("source", "gitlab", "gitlab | fixtures")
 	space := flag.String("space", "", "fixture space label (fixtures mode only)")
 	fixturesDir := flag.String("fixtures", "fixtures", "directory of *.md files when source=fixtures")
+	teamSlug := flag.String("team", "", "team to stamp on every indexed doc (required; one of coupa, star, hr)")
 	osURL := flag.String("opensearch", envOr("KA_OPENSEARCH_URL", "http://localhost:9200"), "OpenSearch URL")
 	osIdx := flag.String("index", envOr("KA_OPENSEARCH_INDEX", "kb-chunks"), "OpenSearch index")
 	dataDir := flag.String("data", envOr("KA_DATA_DIR", ".data"), "local snapshot dir (stand-in for S3)")
@@ -30,6 +32,13 @@ func main() {
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	ctx := context.Background()
+
+	registry := team.NewRegistry(team.DefaultInfos())
+	tm, err := registry.Parse(*teamSlug)
+	if err != nil {
+		log.Error("missing or unknown -team flag; team is required and is never inferred from file content or path", "team", *teamSlug, "err", err)
+		os.Exit(2)
+	}
 
 	store := storage.LocalDisk{Root: *dataDir}
 	embedder := embed.Mock{Dim: 1024}
@@ -39,7 +48,6 @@ func main() {
 	}
 
 	var pages []page
-	var err error
 
 	switch *source {
 	case "fixtures":
@@ -83,6 +91,7 @@ func main() {
 			}
 			docs = append(docs, index.Doc{
 				ID:          docID(p.ID, c.SectionPath, c.Text),
+				Team:        tm.Slug(),
 				SpaceKey:    p.SpaceKey,
 				PageID:      p.ID,
 				PageTitle:   p.Title,

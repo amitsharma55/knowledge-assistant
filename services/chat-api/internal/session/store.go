@@ -38,13 +38,18 @@ func NewStore(e rag.Embedder, ttl time.Duration) *Store {
 	return s
 }
 
+// key scopes a session's uploads to the team they were made under, so an
+// upload cannot surface in a different team's retrieval.
+func key(sessionID, teamSlug string) string { return sessionID + "\x00" + teamSlug }
+
 // Add creates or updates the session's memory retriever with these chunks.
-func (s *Store) Add(ctx context.Context, sessionID string, u Upload, chunks []rag.Chunk) error {
+func (s *Store) Add(ctx context.Context, sessionID, teamSlug string, u Upload, chunks []rag.Chunk) error {
 	s.mu.Lock()
-	e, ok := s.sessions[sessionID]
+	k := key(sessionID, teamSlug)
+	e, ok := s.sessions[k]
 	if !ok {
 		e = &entry{store: opensearch.NewMemoryStore(s.embedder)}
-		s.sessions[sessionID] = e
+		s.sessions[k] = e
 	}
 	e.uploads = append(e.uploads, u)
 	e.lastUsed = time.Now()
@@ -57,11 +62,12 @@ func (s *Store) Add(ctx context.Context, sessionID string, u Upload, chunks []ra
 	return nil
 }
 
-// Retriever returns the session's retriever, or nil if the session has no uploads.
-func (s *Store) Retriever(sessionID string) rag.Retriever {
+// Retriever returns the session's retriever for this team, or nil if the
+// session has no uploads under that team.
+func (s *Store) Retriever(sessionID, teamSlug string) rag.Retriever {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e, ok := s.sessions[sessionID]
+	e, ok := s.sessions[key(sessionID, teamSlug)]
 	if !ok {
 		return nil
 	}

@@ -88,7 +88,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var sessRetriever rag.Retriever
 	if h.Sessions != nil && req.SessionID != "" {
-		sessRetriever = h.Sessions.Retriever(req.SessionID)
+		sessRetriever = h.Sessions.Retriever(req.SessionID, scope.Team().Slug())
 	}
 
 	events := make(chan rag.StreamEvent, 32)

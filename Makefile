@@ -7,7 +7,9 @@ dev-down:
 	docker compose -f deploy/docker/docker-compose.yml down -v
 
 seed:
-	go run ./services/ingestion/cmd/indexer -source fixtures -space DEMO
+	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/coupa -team coupa
+	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/star  -team star
+	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/hr    -team hr
 
 run-api:
 	@if [ -f .env ]; then set -a; . ./.env; set +a; fi; \

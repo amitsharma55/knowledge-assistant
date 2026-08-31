@@ -15,6 +15,7 @@ import (
 )
 
 type Page struct {
+	Team      string
 	SpaceKey  string
 	PageID    string
 	Title     string
@@ -39,6 +40,7 @@ func Ingest(ctx context.Context, p Page, e Embedder, idx *index.Indexer) (int, e
 		}
 		docs = append(docs, index.Doc{
 			ID:          docID(p.PageID, c.SectionPath, c.Text),
+			Team:        p.Team,
 			SpaceKey:    p.SpaceKey,
 			PageID:      p.PageID,
 			PageTitle:   p.Title,
@@ -64,6 +66,7 @@ func Chunks(p Page) []rag.Chunk {
 	for i, c := range chunker.Split(p.Markdown, 800, 100) {
 		out = append(out, rag.Chunk{
 			ID:          p.PageID + ":" + itoa(i),
+			Team:        p.Team,
 			SpaceKey:    p.SpaceKey,
 			PageID:      p.PageID,
 			PageTitle:   p.Title,

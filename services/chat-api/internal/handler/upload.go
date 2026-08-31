@@ -13,6 +13,7 @@ import (
 	"github.com/example/knowledge-assistant/internal/ingest"
 	"github.com/example/knowledge-assistant/internal/index"
 	"github.com/example/knowledge-assistant/internal/rag"
+	"github.com/example/knowledge-assistant/services/chat-api/internal/middleware"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/session"
 	"github.com/google/uuid"
 )
@@ -73,8 +74,15 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	scope, ok := middleware.ScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, "no team scope", http.StatusForbidden)
+		return
+	}
+
 	uploadID := uuid.NewString()
 	page := ingest.Page{
+		Team:      scope.Team().Slug(),
 		SpaceKey:  "UPLOAD",
 		PageID:    uploadID,
 		Title:     hdr.Filename,
@@ -88,7 +96,7 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if sessionID != "" && h.Sessions != nil {
 		chunks := ingest.Chunks(page)
 		up := session.Upload{ID: uploadID, Filename: hdr.Filename, Bytes: len(data), Chunks: len(chunks)}
-		if err := h.Sessions.Add(r.Context(), sessionID, up, chunks); err != nil {
+		if err := h.Sessions.Add(r.Context(), sessionID, scope.Team().Slug(), up, chunks); err != nil {
 			http.Error(w, "session store failed", http.StatusInternalServerError)
 			return
 		}

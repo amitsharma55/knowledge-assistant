@@ -152,36 +152,52 @@ func main() {
 	_ = srv.Shutdown(ctx)
 }
 
+// preloadFixtures walks one subdirectory per team under dir (e.g.
+// fixtures/coupa, fixtures/star, fixtures/hr), deriving the team from the
+// directory name and stamping it on every chunk. Team is never inferred
+// from file content, only from the directory it lives in.
 func preloadFixtures(ctx context.Context, store *opensearch.MemoryStore, dir string) (int, error) {
-	entries, err := os.ReadDir(dir)
+	teamDirs, err := os.ReadDir(dir)
 	if err != nil {
 		return 0, err
 	}
 	total := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+	for _, td := range teamDirs {
+		if !td.IsDir() {
 			continue
 		}
-		body, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		teamSlug := td.Name()
+		teamPath := filepath.Join(dir, teamSlug)
+		entries, err := os.ReadDir(teamPath)
 		if err != nil {
 			return total, err
 		}
-		pageID := strings.TrimSuffix(e.Name(), ".md")
-		title := strings.ReplaceAll(pageID, "-", " ")
-		for i, c := range chunker.Split(string(body), 800, 100) {
-			err := store.Upsert(ctx, rag.Chunk{
-				ID:          pageID + ":" + itoa(i),
-				SpaceKey:    "DEMO",
-				PageID:      pageID,
-				PageTitle:   title,
-				SectionPath: c.SectionPath,
-				URL:         "file://" + filepath.Join(dir, e.Name()),
-				Text:        c.Text,
-			})
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			body, err := os.ReadFile(filepath.Join(teamPath, e.Name()))
 			if err != nil {
 				return total, err
 			}
-			total++
+			pageID := strings.TrimSuffix(e.Name(), ".md")
+			title := strings.ReplaceAll(pageID, "-", " ")
+			for i, c := range chunker.Split(string(body), 800, 100) {
+				err := store.Upsert(ctx, rag.Chunk{
+					ID:          teamSlug + ":" + pageID + ":" + itoa(i),
+					Team:        teamSlug,
+					SpaceKey:    "DEMO",
+					PageID:      pageID,
+					PageTitle:   title,
+					SectionPath: c.SectionPath,
+					URL:         "file://" + filepath.Join(teamPath, e.Name()),
+					Text:        c.Text,
+				})
+				if err != nil {
+					return total, err
+				}
+				total++
+			}
 		}
 	}
 	return total, nil
