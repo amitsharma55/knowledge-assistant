@@ -9,103 +9,118 @@
         <mxCell id="title" value="Knowledge Assistant — Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="40" y="10" width="1320" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="subtitle" value="Query path (top) and ingestion path (bottom). All AWS-managed services on the right; EKS compute in the middle." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+        <mxCell id="subtitle" value="Query path (top) and ingestion path (bottom). Every query is scoped to exactly one team; hatched boxes are not built yet." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
           <mxGeometry x="40" y="40" width="1320" height="20" as="geometry" />
         </mxCell>
 
         <!-- === Query path === -->
-        <mxCell id="user" value="Business user" style="shape=umlActor;verticalLabelPosition=bottom;labelBackgroundColor=none;verticalAlign=top;html=1;outlineConnect=0;" vertex="1" parent="1">
-          <mxGeometry x="70" y="130" width="40" height="60" as="geometry" />
+        <mxCell id="user" value="Business user&#10;(may belong to several teams)" style="shape=umlActor;verticalLabelPosition=bottom;labelBackgroundColor=none;verticalAlign=top;html=1;outlineConnect=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="70" y="120" width="40" height="60" as="geometry" />
         </mxCell>
 
-        <mxCell id="ui" value="Chat UI&#10;(React + Tailwind)&#10;container in EKS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="200" y="130" width="160" height="70" as="geometry" />
+        <mxCell id="ui" value="Chat UI&#10;(React + Tailwind)&#10;team selector · context panel" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="190" y="120" width="170" height="75" as="geometry" />
         </mxCell>
 
         <mxCell id="alb" value="ALB + AWS WAF" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="410" y="105" width="140" height="50" as="geometry" />
+          <mxGeometry x="410" y="100" width="140" height="45" as="geometry" />
         </mxCell>
 
-        <mxCell id="cognito" value="Cognito (SSO / OIDC)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="410" y="175" width="140" height="50" as="geometry" />
+        <mxCell id="idp" value="Entra ID (SSO / OIDC)&#10;group claims → teams" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;dashed=1;dashPattern=8 8;" vertex="1" parent="1">
+          <mxGeometry x="410" y="160" width="140" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="idpnote" value="not wired — dev auth trusts&#10;an X-Dev-User header today" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontStyle=2;fontColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="400" y="216" width="160" height="26" as="geometry" />
         </mxCell>
 
         <!-- === EKS cluster container === -->
         <mxCell id="eks" value="EKS cluster · namespace: knowledge-assistant" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#82b366;dashed=1;fontSize=12;fontStyle=1;verticalAlign=top;fontColor=#2a5a2e;" vertex="1" parent="1">
-          <mxGeometry x="600" y="90" width="320" height="470" as="geometry" />
+          <mxGeometry x="600" y="85" width="320" height="480" as="geometry" />
         </mxCell>
 
         <mxCell id="chatapi" value="chat-api&#10;(Go · chi · SSE)&#10;Deployment (2–10 pods, HPA)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="620" y="130" width="280" height="90" as="geometry" />
+          <mxGeometry x="620" y="120" width="280" height="75" as="geometry" />
         </mxCell>
 
-        <mxCell id="orch" value="RAG Orchestrator&#10;retrieve → prompt → stream" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e8;strokeColor=#82b366;fontSize=10;fontStyle=2;" vertex="1" parent="1">
-          <mxGeometry x="620" y="235" width="280" height="40" as="geometry" />
+        <mxCell id="scope" value="Team scope middleware&#10;X-Team ∩ allowed teams → rag.Scope&#10;the single authorization decision" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="205" width="280" height="55" as="geometry" />
         </mxCell>
 
-        <mxCell id="uploads" value="Upload handler&#10;session-scoped or persist-to-KB&#10;(PDF · MD · TXT)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e8;strokeColor=#82b366;fontSize=10;fontStyle=2;" vertex="1" parent="1">
-          <mxGeometry x="620" y="290" width="280" height="55" as="geometry" />
+        <mxCell id="orch" value="RAG Orchestrator&#10;retrieve → prompt → stream&#10;emits retrieval + suggestion events" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e8;strokeColor=#82b366;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="620" y="272" width="280" height="50" as="geometry" />
         </mxCell>
 
-        <mxCell id="ingest" value="Ingestion CronJob&#10;(Go)&#10;every hour" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="620" y="440" width="280" height="90" as="geometry" />
+        <mxCell id="uploads" value="Upload handler&#10;session-scoped (user + session + team)&#10;or persist-to-KB, team-stamped" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e8;strokeColor=#82b366;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="620" y="334" width="280" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ingest" value="Ingestion CronJob (Go)&#10;one run per team · team is a required flag,&#10;never inferred from content or path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="620" y="430" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="pipeline" value="crawl → S3 raw → extract → normalize → chunk → embed → index" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontStyle=2;fontColor=#2a5a2e;" vertex="1" parent="1">
+          <mxGeometry x="610" y="504" width="300" height="26" as="geometry" />
         </mxCell>
 
         <!-- === AWS managed services (right column) === -->
         <mxCell id="bedrock" value="Amazon Bedrock&#10;Claude Sonnet 4.6 (generation)&#10;Titan Embed v2 (1024-dim)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="970" y="130" width="260" height="80" as="geometry" />
+          <mxGeometry x="970" y="120" width="260" height="75" as="geometry" />
         </mxCell>
 
-        <mxCell id="opensearch" value="OpenSearch Serverless&#10;k-NN (HNSW cosine)&#10;+ BM25 · ACL filter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="970" y="230" width="260" height="80" as="geometry" />
+        <mxCell id="opensearch" value="OpenSearch&#10;k-NN (HNSW cosine, lucene)&#10;team filter INSIDE the knn clause&#10;one index · team + aclGroups keywords" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="970" y="222" width="260" height="90" as="geometry" />
         </mxCell>
 
-        <mxCell id="s3" value="S3&#10;raw HTML + normalized markdown&#10;per page / version" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="970" y="330" width="260" height="70" as="geometry" />
+        <mxCell id="s3" value="S3 — the ingestion seam&#10;raw + normalized markdown,&#10;keyed per team / page / version" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="970" y="335" width="260" height="75" as="geometry" />
         </mxCell>
 
-        <mxCell id="rds" value="RDS Postgres&#10;chats · messages · citations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="970" y="420" width="260" height="60" as="geometry" />
+        <mxCell id="rds" value="RDS Postgres&#10;chats · messages · citations&#10;team column, fixed at creation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="970" y="430" width="260" height="70" as="geometry" />
         </mxCell>
 
-        <mxCell id="redis" value="ElastiCache Redis&#10;session state · response cache · rate limit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="970" y="500" width="260" height="60" as="geometry" />
+        <mxCell id="redis" value="ElastiCache Redis&#10;session state · response cache · rate limit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="970" y="520" width="260" height="55" as="geometry" />
         </mxCell>
 
         <!-- === External source === -->
-        <mxCell id="confluence" value="GitLab (self-managed)&#10;REST API v4&#10;repo docs + project wiki" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="180" y="450" width="220" height="70" as="geometry" />
+        <mxCell id="sharepoint" value="SharePoint Online&#10;Microsoft Graph · Sites.Selected&#10;one site per team" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;dashed=1;dashPattern=8 8;" vertex="1" parent="1">
+          <mxGeometry x="170" y="425" width="240" height="70" as="geometry" />
         </mxCell>
-
-        <mxCell id="confnote" value="repo tree + wiki list · per-page markdown fetch" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
-          <mxGeometry x="180" y="522" width="220" height="20" as="geometry" />
+        <mxCell id="spnote" value="connector not built — documents are&#10;placed directly in S3 for now.&#10;Team comes from the site; item-level&#10;SharePoint ACLs are NOT mirrored." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="160" y="498" width="260" height="52" as="geometry" />
         </mxCell>
 
         <!-- === Observability (bottom bar) === -->
         <mxCell id="obs" value="Observability: OpenTelemetry → CloudWatch + X-Ray  ·  per-query span with token counts, cost, retrieval scores  ·  golden-set evals nightly" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff4e6;strokeColor=#d79b00;fontSize=11;fontStyle=2;" vertex="1" parent="1">
-          <mxGeometry x="70" y="700" width="1230" height="40" as="geometry" />
+          <mxGeometry x="70" y="720" width="1230" height="40" as="geometry" />
         </mxCell>
 
         <!-- === Query path edges === -->
         <mxCell id="e_user_ui" style="endArrow=classic;html=1;" edge="1" parent="1" source="user" target="ui">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_ui_alb" value="HTTPS · SSE" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="ui" target="alb">
+        <mxCell id="e_ui_alb" value="HTTPS · SSE&#10;X-Team header" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="ui" target="alb">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_alb_cognito" value="verify JWT" style="endArrow=classic;html=1;fontSize=10;dashed=1;" edge="1" parent="1" source="alb" target="cognito">
+        <mxCell id="e_alb_idp" value="verify JWT" style="endArrow=classic;html=1;fontSize=10;dashed=1;" edge="1" parent="1" source="alb" target="idp">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e_alb_api" value="proxy" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="alb" target="chatapi">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="e_api_scope" value="every request" style="endArrow=classic;html=1;fontSize=9;" edge="1" parent="1" source="chatapi" target="scope">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_scope_orch" value="Scope" style="endArrow=classic;html=1;fontSize=9;" edge="1" parent="1" source="scope" target="orch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="e_api_bedrock" value="InvokeModelWithResponseStream" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="chatapi" target="bedrock">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_api_os" value="k-NN + BM25 search" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="orch" target="opensearch">
+        <mxCell id="e_api_os" value="filtered k-NN (team + ACL)" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="orch" target="opensearch">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_api_rds" value="persist chat + messages" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="chatapi" target="rds">
+        <mxCell id="e_api_rds" value="persist chat + messages (team)" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="chatapi" target="rds">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e_api_redis" value="session · cache" style="endArrow=classic;html=1;fontSize=10;dashed=1;" edge="1" parent="1" source="chatapi" target="redis">
@@ -113,48 +128,56 @@
         </mxCell>
 
         <!-- === Ingestion path edges === -->
-        <mxCell id="e_conf_ing" value="pull markdown pages" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="confluence" target="ingest">
+        <mxCell id="e_sp_ing" value="crawl per team&#10;(delta token)" style="endArrow=classic;html=1;fontSize=10;dashed=1;dashPattern=8 8;" edge="1" parent="1" source="sharepoint" target="ingest">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_ing_bedrock" value="embed via Titan" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="ingest" target="bedrock">
+        <mxCell id="e_ing_s3" value="1 · snapshot raw + normalized" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="ingest" target="s3">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_ing_os" value="bulk index chunks" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="ingest" target="opensearch">
+        <mxCell id="e_ing_bedrock" value="2 · embed via Titan" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="ingest" target="bedrock">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_ing_s3" value="snapshot raw + normalized" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="ingest" target="s3">
+        <mxCell id="e_ing_os" value="3 · bulk index (team stamped;&#10;unstamped docs rejected)" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="ingest" target="opensearch">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- === Upload path (same visual space as ingest, dashed) === -->
+        <!-- === Upload path === -->
         <mxCell id="e_upl_os" value="index (persist=true)" style="endArrow=classic;html=1;fontSize=10;dashed=1;strokeColor=#82b366;" edge="1" parent="1" source="uploads" target="opensearch">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
+        <!-- === Team boundary callout === -->
+        <mxCell id="boundary" value="Team boundary&#10;One team per chat, fixed at creation. No cross-team or &quot;all teams&quot; search.&#10;A no-results query returns match COUNTS for the caller's other teams — never content.&#10;Enforced once in middleware; the Retriever interface requires a Scope, so the compiler&#10;proves no retrieval path runs unscoped." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="600" y="590" width="700" height="100" as="geometry" />
+        </mxCell>
+
         <!-- === Legend === -->
         <mxCell id="legend" value="Legend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;fontSize=11;fontStyle=1;verticalAlign=top;" vertex="1" parent="1">
-          <mxGeometry x="70" y="580" width="500" height="100" as="geometry" />
+          <mxGeometry x="70" y="590" width="500" height="100" as="geometry" />
         </mxCell>
         <mxCell id="l1" value="Client / UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
-          <mxGeometry x="85" y="610" width="90" height="24" as="geometry" />
+          <mxGeometry x="85" y="618" width="90" height="24" as="geometry" />
         </mxCell>
         <mxCell id="l2" value="Gateway / Auth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
-          <mxGeometry x="185" y="610" width="100" height="24" as="geometry" />
+          <mxGeometry x="185" y="618" width="100" height="24" as="geometry" />
         </mxCell>
         <mxCell id="l3" value="EKS compute" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
-          <mxGeometry x="295" y="610" width="90" height="24" as="geometry" />
+          <mxGeometry x="295" y="618" width="90" height="24" as="geometry" />
         </mxCell>
         <mxCell id="l4" value="LLM (Bedrock)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
-          <mxGeometry x="395" y="610" width="100" height="24" as="geometry" />
+          <mxGeometry x="395" y="618" width="100" height="24" as="geometry" />
         </mxCell>
         <mxCell id="l5" value="Data store" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
-          <mxGeometry x="85" y="644" width="90" height="24" as="geometry" />
+          <mxGeometry x="85" y="650" width="90" height="24" as="geometry" />
         </mxCell>
         <mxCell id="l6" value="External" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" vertex="1" parent="1">
-          <mxGeometry x="185" y="644" width="90" height="24" as="geometry" />
+          <mxGeometry x="185" y="650" width="90" height="24" as="geometry" />
         </mxCell>
-        <mxCell id="l7" value="dashed = optional / async" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
-          <mxGeometry x="285" y="644" width="220" height="24" as="geometry" />
+        <mxCell id="l7" value="Team enforcement" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="285" y="650" width="110" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="l8" value="hatched border = not built yet" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="405" y="650" width="160" height="24" as="geometry" />
         </mxCell>
 
       </root>
