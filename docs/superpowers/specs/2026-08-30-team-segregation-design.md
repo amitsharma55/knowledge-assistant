@@ -31,10 +31,18 @@ Settled during brainstorming; recorded here so the plan does not relitigate them
    behind the same interface.
 5. **Embeddings are not partitioned.** One model, one vector space, one index.
    Segregation is a partition-and-filter concern, not an embedding concern.
+6. **One team per chat.** A user belonging to several teams picks one when
+   starting a chat; the chat is pinned to it. See *Multi-team users* below.
+7. **Retrieved context is displayed** in a collapsible panel showing exactly
+   what the model received. See *Retrieval transparency* below.
 
 ## Non-Goals
 
-- **No cross-team or "All teams" search.** A query is scoped to exactly one team.
+- **No cross-team or "All teams" search.** A query is scoped to exactly one
+  team, including for users who belong to several.
+- **No reranking.** `RerankTopN` currently truncates kNN results rather than
+  reranking them. Left as is; noted because the transparency panel makes it
+  visible.
 - **No mirroring of SharePoint item-level or folder-level permissions.** Team
   is derived from the site; a document restricted to a subset of a team's
   members becomes visible to that entire team. This limitation must be stated
@@ -43,6 +51,81 @@ Settled during brainstorming; recorded here so the plan does not relitigate them
 - **No per-team embedding models or per-team index tuning.**
 - **No migration of existing indexed data.** The corpus is reindexed from
   SharePoint; existing `kb-chunks` content is discarded.
+
+## Multi-team users
+
+A user may belong to several teams — the working example is a user in both Star
+and HR. For a user's *own* teams this is not an access-control question: they
+are entitled to both corpora and could switch and re-ask. The decision is about
+answer quality and traceability.
+
+**Decision: one team per chat.** The user selects a team when starting a chat;
+it is fixed for that chat's lifetime, and the sidebar shows only the active
+team's chats.
+
+Two alternatives were rejected:
+
+- **Team switchable mid-chat.** Earlier turns remain in the context window
+  grounded in one team's documents while later retrieval draws from another,
+  so the model blends corpora with no signal to the user about which turn came
+  from where.
+- **Multi-select, union the results.** A query like "what is our escalation
+  process" legitimately matches both corpora, and the model merges two teams'
+  distinct processes into one confident answer that is wrong for both. It also
+  breaks `k` allocation — a single global `k` over a union lets the larger
+  corpus crowd out the smaller, requiring per-team retrieval and a merge step —
+  and it destroys per-answer auditability, which matters specifically because
+  HR is in scope.
+
+### No-results escape hatch
+
+The real cost of one-team-per-chat is that the user must guess which team owns
+the answer before asking, and not knowing where a document lives is the reason
+the assistant exists.
+
+When a scoped search returns nothing above a relevance floor, the API runs a
+**count-only** probe against the user's other allowed teams and the answer
+reports it:
+
+> No Star documentation covers this. You also have access to HR, which has 3
+> matching documents — switch to HR and ask there?
+
+No content crosses the team boundary; only a match count for teams the user
+already has access to. Grounding stays single-corpus and every answer still
+traces to exactly one team.
+
+`Scope` holds a single team, not a set. If true multi-team retrieval is wanted
+later, widening it is a contained change precisely because every retrieval path
+already funnels through the chokepoint. Building the union machinery now buys
+nothing.
+
+## Retrieval transparency
+
+A collapsible right-hand panel shows the retrieved context for the selected
+answer.
+
+**It shows what the model actually received.** The prompt is built from the
+`RerankTopN` chunks in `chosen`, not from all `TopK`. Displaying any chunk the
+model did not see invites the user to attribute a claim to a document that had
+no part in producing it, which is worse than showing nothing.
+
+The chunks retrieved but *not* passed to the model are the most useful
+diagnostic signal — they reveal when the right document was retrieved and then
+cut. Only `chosen` is streamed today, so the orchestrator gains a `retrieval`
+event carrying all `TopK` chunks with a `used` boolean. Unused chunks render
+below a divider, de-emphasised.
+
+Each chunk displays its page title, section path, similarity score, and team
+badge. Scores expose the case where nothing relevant was found and the model
+improvised. The team badge is a continuous visual check that the segregation
+filter is working.
+
+The panel serves two audiences with opposite needs: builders want scores,
+dropped chunks and provenance detail; an end user asking about leave policy
+wants a title and a link. One component, two densities — expanded by default
+when a debug flag is set (`KA_LLM_MODE=mock` implies it), collapsed otherwise.
+The existing inline citations in `Message.jsx` remain as always-visible
+provenance regardless.
 
 ## Architecture
 
@@ -184,6 +267,9 @@ sidebar. A chat's team is fixed at creation and never changes.
 - The selected team is sent with every chat, upload, and chat-list request.
 - Switching teams starts a new chat rather than re-scoping the current one,
   since a chat's team is fixed at creation.
+- A new collapsible context panel renders the `retrieval` event, as described
+  in *Retrieval transparency*. `Message.jsx` keeps its inline citations
+  unchanged.
 
 ## Testing
 
@@ -202,6 +288,12 @@ The tests that make the boundary meaningful:
    team are absent from another team's list and retrieval.
 5. **Ingestion stamping.** Every chunk produced by a run carries the run's team;
    no chunk is indexed without one.
+6. **Panel matches the prompt.** The chunks marked `used` in the `retrieval`
+   event are exactly the chunks `BuildPrompt` received — asserted directly, so
+   the panel cannot drift from the prompt.
+7. **Escape hatch counts only.** A no-results query returns match counts for
+   other allowed teams and no chunk text or titles from them, and reports
+   nothing for teams the user is not in.
 
 ## Consequences
 
@@ -210,3 +302,7 @@ The tests that make the boundary meaningful:
 - The index is recreated and the corpus reindexed from SharePoint.
 - The GitLab connector remains but is no longer the primary source.
 - Within-team confidentiality is not addressed; `aclGroups` is reserved for it.
+- Multi-team users trade one-click cross-team search for single-corpus
+  grounding and per-answer auditability; the escape hatch mitigates the cost.
+- The transparency panel makes retrieval quality visible, including the absence
+  of real reranking.
