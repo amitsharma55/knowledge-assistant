@@ -85,6 +85,7 @@ func main() {
 		TopK:           cfg.TopK,
 		RerankN:        cfg.RerankTopN,
 		RelevanceFloor: cfg.RelevanceFloor,
+		Log:            log,
 	}
 	if c, ok := retriever.(rag.Counter); ok {
 		orch.Counter = c

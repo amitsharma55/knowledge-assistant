@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -111,6 +112,97 @@ func TestRetrievalEventPrecedesCitations(t *testing.T) {
 				t.Fatal("citation event arrived before the retrieval event")
 			}
 		}
+	}
+}
+
+// TestKBRetrieverAlwaysQueriedEvenWhenSessionFillsChosen pins the fix for a
+// spec gap: when the session retriever alone returns >= RerankN chunks, the
+// primary (KB) retriever must still be queried so the retrieval event's
+// `all` list is complete for the UI's context panel — the panel promises to
+// show every chunk retrieved, with unused ones listed separately. Selection
+// behaviour (`chosen`) must be unaffected: it stays exactly the session
+// chunks.
+func TestKBRetrieverAlwaysQueriedEvenWhenSessionFillsChosen(t *testing.T) {
+	llm := &capturingLLM{}
+	sessionChunks := []Chunk{
+		{ID: "s1", Team: "coupa", PageTitle: "Upload", Text: "session chunk 1"},
+		{ID: "s2", Team: "coupa", PageTitle: "Upload", Text: "session chunk 2"},
+	}
+	sess := stubRetriever{sessionChunks}
+	o := &Orchestrator{Retriever: stubRetriever{sixChunks()}, LLM: llm, TopK: 6, RerankN: 2}
+
+	out := make(chan StreamEvent, 64)
+	go func() {
+		if err := o.Answer(context.Background(), "invoice sync", fixtureScope(t), sess, out); err != nil {
+			t.Errorf("Answer: %v", err)
+		}
+		close(out)
+	}()
+
+	var retrieved []RetrievedChunk
+	var citations []Chunk
+	for e := range out {
+		switch e.Type {
+		case "retrieval":
+			retrieved = e.Data.([]RetrievedChunk)
+		case "citation":
+			citations = e.Data.([]Chunk)
+		}
+	}
+
+	if len(citations) != 2 || citations[0].ID != "s1" || citations[1].ID != "s2" {
+		t.Fatalf("chosen/citations changed: got %v, want exactly the two session chunks", citations)
+	}
+
+	if retrieved == nil {
+		t.Fatal("no retrieval event was emitted")
+	}
+	var sawKBChunk, kbChunkMarkedUnused bool
+	for _, rc := range retrieved {
+		if rc.ID == "c1" {
+			sawKBChunk = true
+			kbChunkMarkedUnused = !rc.Used
+		}
+	}
+	if !sawKBChunk {
+		t.Fatal("primary retriever was never queried; retrieval event has zero KB chunks even though session chunks filled `chosen`")
+	}
+	if !kbChunkMarkedUnused {
+		t.Error("KB chunk present but not marked unused")
+	}
+}
+
+// erroringRetriever always fails; used to test that a session retriever
+// failure degrades gracefully instead of aborting the whole answer.
+type erroringRetriever struct{}
+
+func (erroringRetriever) Search(_ context.Context, _ string, _ Scope, _ int) ([]Chunk, error) {
+	return nil, fmt.Errorf("boom")
+}
+
+// TestSessionRetrieverErrorDoesNotAbortAnswer pins the deliberate asymmetry:
+// a failed *session* retriever only drops uploaded-doc grounding (logged),
+// while a failed *primary* retriever aborts the whole answer. Answer must
+// still succeed and fall back to KB-only grounding.
+func TestSessionRetrieverErrorDoesNotAbortAnswer(t *testing.T) {
+	llm := &capturingLLM{}
+	o := &Orchestrator{Retriever: stubRetriever{sixChunks()}, LLM: llm, TopK: 6, RerankN: 4}
+
+	out := make(chan StreamEvent, 64)
+	err := o.Answer(context.Background(), "invoice sync", fixtureScope(t), erroringRetriever{}, out)
+	close(out)
+	if err != nil {
+		t.Fatalf("Answer returned an error for a failed session retriever, want graceful degradation: %v", err)
+	}
+
+	var sawDone bool
+	for e := range out {
+		if e.Type == "done" {
+			sawDone = true
+		}
+	}
+	if !sawDone {
+		t.Error("no done event; answer did not complete despite session retriever failure")
 	}
 }
 

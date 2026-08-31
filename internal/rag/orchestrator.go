@@ -3,6 +3,7 @@ package rag
 import (
 	"context"
 	"fmt"
+	"log/slog"
 )
 
 type Orchestrator struct {
@@ -12,6 +13,17 @@ type Orchestrator struct {
 	RerankN        int
 	Counter        Counter
 	RelevanceFloor float64
+	// Log receives operational signals that don't warrant aborting the
+	// answer, such as a failed session retrieval. Optional; nil disables
+	// logging (falls back to slog.Default()).
+	Log *slog.Logger
+}
+
+func (o *Orchestrator) logger() *slog.Logger {
+	if o.Log != nil {
+		return o.Log
+	}
+	return slog.Default()
 }
 
 // Answer runs the full retrieve → prompt → stream pipeline. If `session` is
@@ -25,7 +37,14 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, scope Scope,
 
 	if session != nil {
 		sc, err := session.Search(ctx, question, scope, o.RerankN)
-		if err == nil {
+		if err != nil {
+			// A failed session lookup (e.g. embed error) silently drops the
+			// user's just-uploaded document from grounding. That's a real
+			// degradation, not a fatal one — the primary retriever can still
+			// answer from the KB — so we log it rather than abort the
+			// request the way a primary retriever error does.
+			o.logger().Warn("session retriever failed; continuing without uploaded-doc grounding", "err", err)
+		} else {
 			for _, c := range sc {
 				if _, dup := seenAll[c.ID]; !dup {
 					seenAll[c.ID] = struct{}{}
@@ -42,23 +61,27 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, scope Scope,
 		}
 	}
 
-	if len(chosen) < o.RerankN {
-		kb, err := o.Retriever.Search(ctx, question, scope, o.TopK)
-		if err != nil {
-			return fmt.Errorf("retrieve: %w", err)
+	// Always query the primary retriever, even if the session retriever
+	// already filled `chosen`, so `all` (and thus the retrieval event's
+	// context panel) reflects every chunk retrieved — including KB chunks
+	// that went unused — per spec. Selection behaviour is unchanged: session
+	// chunks are still considered first and `chosen` is capped at RerankN
+	// before any KB chunk can be added to it.
+	kb, err := o.Retriever.Search(ctx, question, scope, o.TopK)
+	if err != nil {
+		return fmt.Errorf("retrieve: %w", err)
+	}
+	for _, c := range kb {
+		if _, dup := seenAll[c.ID]; !dup {
+			seenAll[c.ID] = struct{}{}
+			all = append(all, c)
 		}
-		for _, c := range kb {
-			if _, dup := seenAll[c.ID]; !dup {
-				seenAll[c.ID] = struct{}{}
-				all = append(all, c)
-			}
-			if _, dup := seen[c.ID]; dup {
-				continue
-			}
-			if len(chosen) < o.RerankN {
-				seen[c.ID] = struct{}{}
-				chosen = append(chosen, c)
-			}
+		if _, dup := seen[c.ID]; dup {
+			continue
+		}
+		if len(chosen) < o.RerankN {
+			seen[c.ID] = struct{}{}
+			chosen = append(chosen, c)
 		}
 	}
 
