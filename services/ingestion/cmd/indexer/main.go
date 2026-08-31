@@ -90,7 +90,7 @@ func main() {
 				continue
 			}
 			docs = append(docs, index.Doc{
-				ID:          docID(p.ID, c.SectionPath, c.Text),
+				ID:          docID(tm.Slug(), p.ID, c.SectionPath, c.Text),
 				Team:        tm.Slug(),
 				SpaceKey:    p.SpaceKey,
 				PageID:      p.ID,
@@ -151,14 +151,20 @@ func loadFixtures(dir, space string) ([]page, error) {
 	return pages, nil
 }
 
-func docID(pageID, section, text string) string {
+// docID scopes a document's identity to its team, so byte-identical content
+// (shared boilerplate, a copied policy section) in two different teams
+// produces two different ids rather than colliding and overwriting each
+// other in the shared OpenSearch index.
+func docID(team, pageID, section, text string) string {
 	h := sha1.New()
+	h.Write([]byte(team))
+	h.Write([]byte{0})
 	h.Write([]byte(pageID))
 	h.Write([]byte{0})
 	h.Write([]byte(section))
 	h.Write([]byte{0})
 	h.Write([]byte(text))
-	return pageID + ":" + hex.EncodeToString(h.Sum(nil))[:12]
+	return team + ":" + pageID + ":" + hex.EncodeToString(h.Sum(nil))[:12]
 }
 
 func envOr(k, d string) string {

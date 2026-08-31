@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -154,9 +155,16 @@ func main() {
 
 // preloadFixtures walks one subdirectory per team under dir (e.g.
 // fixtures/coupa, fixtures/star, fixtures/hr), deriving the team from the
-// directory name and stamping it on every chunk. Team is never inferred
-// from file content, only from the directory it lives in.
+// directory name and stamping it on every chunk. The directory name is
+// validated against team.Registry before it is trusted as a team: an
+// unregistered directory (stray dir, typo, a macOS ".DS_Store"-as-dir
+// artifact, etc.) must never become a phantom team that gets served
+// through rag.Scope filtering. On such a directory this fails startup
+// outright rather than silently skipping it, so a misnamed or bogus
+// fixtures directory is caught immediately instead of quietly serving an
+// incomplete (or, worse, differently-scoped) corpus.
 func preloadFixtures(ctx context.Context, store *opensearch.MemoryStore, dir string) (int, error) {
+	registry := team.NewRegistry(team.DefaultInfos())
 	teamDirs, err := os.ReadDir(dir)
 	if err != nil {
 		return 0, err
@@ -167,6 +175,9 @@ func preloadFixtures(ctx context.Context, store *opensearch.MemoryStore, dir str
 			continue
 		}
 		teamSlug := td.Name()
+		if _, err := registry.Parse(teamSlug); err != nil {
+			return total, fmt.Errorf("preload fixtures: %q under %q is not a registered team: %w", teamSlug, dir, err)
+		}
 		teamPath := filepath.Join(dir, teamSlug)
 		entries, err := os.ReadDir(teamPath)
 		if err != nil {
