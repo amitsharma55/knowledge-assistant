@@ -68,7 +68,7 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, scope Scope,
 		var suggestions []TeamSuggestion
 		for _, other := range scope.Others() {
 			probe := NewScope(other, nil, scope.Groups())
-			n, err := o.Counter.Count(ctx, question, probe)
+			n, err := o.Counter.Count(ctx, question, probe, o.RelevanceFloor)
 			if err != nil || n == 0 {
 				continue
 			}

@@ -116,7 +116,7 @@ func TestRetrievalEventPrecedesCitations(t *testing.T) {
 
 type stubCounter struct{ counts map[string]int }
 
-func (s stubCounter) Count(_ context.Context, _ string, scope Scope) (int, error) {
+func (s stubCounter) Count(_ context.Context, _ string, scope Scope, _ float64) (int, error) {
 	return s.counts[scope.Team().Slug()], nil
 }
 

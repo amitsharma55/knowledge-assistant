@@ -88,6 +88,49 @@ func TestSearchReturnsFullKWithinTheTeamPartition(t *testing.T) {
 	}
 }
 
+// TestCountOnlyCountsChunksAtOrAboveFloor pins the fix for a bug where Count
+// returned len(Search(..., 1000)) unconditionally — i.e. the size of the
+// team's visible corpus, independent of the query, since Search itself
+// applies no relevance threshold. Count must apply the floor itself.
+func TestCountOnlyCountsChunksAtOrAboveFloor(t *testing.T) {
+	m := NewMemoryStore(embed.Mock{Dim: 1024})
+	ctx := context.Background()
+	docs := []rag.Chunk{
+		{ID: "hr-1", Team: "hr", Text: "parental leave policy details"},
+		{ID: "hr-2", Team: "hr", Text: "parental leave policy details"},
+		{ID: "hr-3", Team: "hr", Text: "expense reimbursement procedure"},
+	}
+	for _, d := range docs {
+		if err := m.Upsert(ctx, d); err != nil {
+			t.Fatalf("upsert %s: %v", d.ID, err)
+		}
+	}
+	scope := scopeFor(t, "hr", "hr")
+
+	// A query matching real content: an exact text match embeds identically
+	// under the mock embedder, scoring cosine 1.0, well above the floor. The
+	// third chunk's independently-hashed embedding is uncorrelated with the
+	// query and should not count.
+	n, err := m.Count(ctx, "parental leave policy details", scope, 0.5)
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("Count = %d, want 2 (only the exact-text matches), not the whole team corpus", n)
+	}
+
+	// A query with nothing relevant to any chunk in the team: under the mock
+	// embedder distinct text hashes to an effectively uncorrelated vector, so
+	// every chunk should score well below the floor.
+	n, err = m.Count(ctx, "completely unrelated gibberish about deep sea navigation", scope, 0.5)
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("Count = %d, want 0 for a query with nothing relevant; Count must not just report corpus size", n)
+	}
+}
+
 func TestSearchRefusesZeroScope(t *testing.T) {
 	m := NewMemoryStore(embed.Mock{Dim: 1024})
 	seed(t, m)

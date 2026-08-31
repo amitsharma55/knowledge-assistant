@@ -73,6 +73,25 @@ func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k in
 	return chunks, nil
 }
 
+// Count reports how many chunks in the scope's team score at or above floor
+// against the query, without returning any of them. It backs the no-results
+// escape hatch; this path only runs when an answer found nothing, so the
+// extra kNN round trip is acceptable. It reuses scopeFilter so the team and
+// ACL constraints are identical to Search's.
+func (c *Client) Count(ctx context.Context, query string, scope rag.Scope, floor float64) (int, error) {
+	hits, err := c.Search(ctx, query, scope, 1000)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, h := range hits {
+		if h.Score >= floor {
+			n++
+		}
+	}
+	return n, nil
+}
+
 // scopeFilter constrains a kNN search to the scope's team, and to chunks the
 // caller's groups may see. It runs inside the knn clause so that k is applied
 // within the team partition rather than across the whole index.

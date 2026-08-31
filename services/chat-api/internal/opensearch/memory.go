@@ -79,14 +79,22 @@ func (m *MemoryStore) Search(ctx context.Context, query string, scope rag.Scope,
 	return out, nil
 }
 
-// Count reports how many chunks in the scope's team the query would match,
-// without returning any of them.
-func (m *MemoryStore) Count(ctx context.Context, query string, scope rag.Scope) (int, error) {
+// Count reports how many chunks in the scope's team score at or above floor
+// against the query, without returning any of them. Search itself applies no
+// relevance threshold (its ranking must not change, since it feeds the
+// prompt), so Count applies the floor here, over Search's full result set.
+func (m *MemoryStore) Count(ctx context.Context, query string, scope rag.Scope, floor float64) (int, error) {
 	hits, err := m.Search(ctx, query, scope, 1000)
 	if err != nil {
 		return 0, err
 	}
-	return len(hits), nil
+	n := 0
+	for _, h := range hits {
+		if h.Score >= floor {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func aclOK(chunkGroups, userGroups []string) bool {

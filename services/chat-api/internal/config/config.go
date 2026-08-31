@@ -19,7 +19,13 @@ type Config struct {
 	EmbedModelID    string
 	TopK            int
 	RerankTopN      int
-	RelevanceFloor  float64
+	// RelevanceFloor is a raw similarity-score cutoff, not a normalized
+	// probability: MemoryStore reports raw cosine similarity, while
+	// OpenSearch's lucene cosinesimil reports a normalized (1+cos)/2. The
+	// same numeric value therefore means different things in fixtures mode
+	// vs. real OpenSearch, and in any future backend, so this must be tuned
+	// per deployment mode rather than treated as a portable constant.
+	RelevanceFloor float64
 }
 
 func Load() Config {

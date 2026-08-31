@@ -42,12 +42,15 @@ type LLM interface {
 	Stream(ctx context.Context, prompt string, out chan<- StreamEvent) error
 }
 
-// Counter reports how many chunks a query would match in a scope, without
-// returning any of them. It backs the no-results escape hatch, which tells a
-// multi-team user that their question is answerable under another of their
-// teams while leaking nothing but a count.
+// Counter reports how many chunks at or above floor a query would match in a
+// scope, without returning any of them. It backs the no-results escape
+// hatch, which tells a multi-team user that their question is answerable
+// under another of their teams while leaking nothing but a count. floor is
+// the same relevance standard used to decide an answer has no grounding, so
+// "not relevant enough to answer with" and "not relevant enough to count"
+// stay the same standard.
 type Counter interface {
-	Count(ctx context.Context, query string, scope Scope) (int, error)
+	Count(ctx context.Context, query string, scope Scope, floor float64) (int, error)
 }
 
 // TeamSuggestion is a count only. It must never carry chunk text or titles.
