@@ -65,7 +65,7 @@ func (m *MemoryStore) Search(ctx context.Context, query string, scope rag.Scope,
 		if !aclOK(it.chunk.ACLGroups, scope.Groups()) {
 			continue
 		}
-		results = append(results, scored{it.chunk, cosine(qv, it.vec)})
+		results = append(results, scored{it.chunk, similarity(qv, it.vec)})
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].s > results[j].s })
 	if len(results) > k {
@@ -111,6 +111,16 @@ func aclOK(chunkGroups, userGroups []string) bool {
 		}
 	}
 	return false
+}
+
+// similarity scores a pair on the same scale OpenSearch reports, so that
+// KA_RELEVANCE_FLOOR means one thing regardless of which retriever is wired.
+// Lucene's cosinesimil space maps cosine [-1,1] onto [0,1] as (1+cos)/2;
+// raw cosine here would make a floor tuned against OpenSearch far too
+// permissive in fixtures mode, and one tuned in fixtures mode unreachable
+// against OpenSearch. The mapping is monotonic, so ranking is unchanged.
+func similarity(a, b []float32) float64 {
+	return (1 + cosine(a, b)) / 2
 }
 
 func cosine(a, b []float32) float64 {

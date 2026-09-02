@@ -107,11 +107,16 @@ func TestCountOnlyCountsChunksAtOrAboveFloor(t *testing.T) {
 	}
 	scope := scopeFor(t, "hr", "hr")
 
+	// Floors are on the (1+cos)/2 scale Search reports (see
+	// TestSearchScoresUseTheSameScaleAsOpenSearch), so 0.75 here is raw
+	// cosine 0.5 -- comfortably above the ~0.5 that uncorrelated mock
+	// vectors produce, and below the 1.0 of an exact match.
+	//
 	// A query matching real content: an exact text match embeds identically
-	// under the mock embedder, scoring cosine 1.0, well above the floor. The
-	// third chunk's independently-hashed embedding is uncorrelated with the
-	// query and should not count.
-	n, err := m.Count(ctx, "parental leave policy details", scope, 0.5)
+	// under the mock embedder, scoring 1.0, well above the floor. The third
+	// chunk's independently-hashed embedding is uncorrelated with the query
+	// and should not count.
+	n, err := m.Count(ctx, "parental leave policy details", scope, 0.75)
 	if err != nil {
 		t.Fatalf("Count: %v", err)
 	}
@@ -122,7 +127,7 @@ func TestCountOnlyCountsChunksAtOrAboveFloor(t *testing.T) {
 	// A query with nothing relevant to any chunk in the team: under the mock
 	// embedder distinct text hashes to an effectively uncorrelated vector, so
 	// every chunk should score well below the floor.
-	n, err = m.Count(ctx, "completely unrelated gibberish about deep sea navigation", scope, 0.5)
+	n, err = m.Count(ctx, "completely unrelated gibberish about deep sea navigation", scope, 0.75)
 	if err != nil {
 		t.Fatalf("Count: %v", err)
 	}
@@ -137,5 +142,47 @@ func TestSearchRefusesZeroScope(t *testing.T) {
 
 	if _, err := m.Search(context.Background(), "escalation policy", rag.Scope{}, 8); err == nil {
 		t.Fatal("Search with a zero Scope returned nil error, want refusal")
+	}
+}
+
+// TestSearchScoresUseTheSameScaleAsOpenSearch pins the scale MemoryStore
+// reports. OpenSearch's lucene cosinesimil returns (1+cos)/2, so raw cosine
+// here would mean KA_RELEVANCE_FLOOR denoted two different things depending
+// on which retriever was wired -- a value tuned in one mode is wrong in the
+// other, silently. Both report (1+cos)/2.
+func TestSearchScoresUseTheSameScaleAsOpenSearch(t *testing.T) {
+	ctx := context.Background()
+	m := NewMemoryStore(embed.Mock{Dim: 64})
+	scope := scopeFor(t, "hr", "hr")
+	text := "employees accrue 25 days of annual leave"
+	if err := m.Upsert(ctx, rag.Chunk{ID: "x1", Team: "hr", Text: text}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	// A chunk retrieved by its own exact text is cosine 1.0, which is 1.0 on
+	// both scales -- it cannot tell the two apart.
+	hits, err := m.Search(ctx, text, scope, 5)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("got %d hits, want 1", len(hits))
+	}
+	if hits[0].Score < 0.999 {
+		t.Errorf("exact-text match scored %v, want ~1.0 on either scale", hits[0].Score)
+	}
+
+	// An unrelated query does distinguish them: hash vectors are near
+	// orthogonal, so raw cosine is ~0 while (1+cos)/2 is ~0.5. A negative
+	// score is proof of the raw scale, which no OpenSearch score can be.
+	hits, err = m.Search(ctx, "deep sea navigation and sonar charts", scope, 5)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if hits[0].Score < 0 {
+		t.Errorf("unrelated query scored %v; a negative score means raw cosine is being reported, but OpenSearch's cosinesimil is (1+cos)/2 and never negative", hits[0].Score)
+	}
+	if hits[0].Score < 0.3 || hits[0].Score > 0.7 {
+		t.Errorf("unrelated query scored %v, want ~0.5 (the (1+cos)/2 image of an orthogonal pair)", hits[0].Score)
 	}
 }
