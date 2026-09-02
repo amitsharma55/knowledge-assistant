@@ -17,6 +17,10 @@ seed: embed-pull
 	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/coupa -team coupa
 	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/star  -team star
 	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/hr    -team hr
+	@# Newly indexed docs are not searchable until OpenSearch refreshes
+	@# (1s by default). Without this, a query issued immediately after
+	@# seeding sees an empty index and looks like a retrieval failure.
+	@curl -s -X POST "$${KA_OPENSEARCH_URL:-http://localhost:9200}/$${KA_OPENSEARCH_INDEX:-kb-chunks}/_refresh" >/dev/null
 
 run-api:
 	@if [ -f .env ]; then set -a; . ./.env; set +a; fi; \

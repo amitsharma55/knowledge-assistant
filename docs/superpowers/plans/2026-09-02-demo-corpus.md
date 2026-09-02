@@ -767,6 +767,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ## Notes for the executor
 
 - **`make seed` requires the stack.** `make dev-up` first, and the Ollama model must be pulled (`make embed-pull`, which `seed` depends on).
+- **Seeding only upserts.** It never removes chunks for documents deleted from `fixtures/`, so every check step should delete the index first: `curl -s -X DELETE http://localhost:9200/kb-chunks && make seed`. `make seed` forces an index refresh at the end; without one, a query issued immediately after seeding sees an empty index and reads as a retrieval failure.
 - **Restart `chat-api` after reseeding only if it was started before the index existed.** It queries OpenSearch per request and does not cache. When restarting, kill by port — `go run` leaves a child that survives a `pkill` on the parent, and a stale server silently keeps the port while the new one dies on bind:
   ```bash
   lsof -t -nP -iTCP:8080 -sTCP:LISTEN | xargs -r kill
