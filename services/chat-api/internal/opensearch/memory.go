@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/example/knowledge-assistant/internal/chunker"
 	"github.com/example/knowledge-assistant/internal/rag"
 )
 
@@ -26,7 +27,10 @@ type indexed struct {
 func NewMemoryStore(e rag.Embedder) *MemoryStore { return &MemoryStore{Embedder: e} }
 
 func (m *MemoryStore) Upsert(ctx context.Context, c rag.Chunk) error {
-	v, err := m.Embedder.Embed(ctx, c.Text)
+	// Same embedding input as the indexed path (internal/ingest), so an
+	// uploaded document retrieves the way the same content would if it had
+	// been ingested.
+	v, err := m.Embedder.Embed(ctx, chunker.EmbedText(c.PageTitle, c.SectionPath, c.Text))
 	if err != nil {
 		return err
 	}

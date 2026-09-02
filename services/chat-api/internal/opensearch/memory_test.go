@@ -2,6 +2,7 @@ package opensearch
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"strconv"
@@ -184,5 +185,37 @@ func TestSearchScoresUseTheSameScaleAsOpenSearch(t *testing.T) {
 	}
 	if hits[0].Score < 0.3 || hits[0].Score > 0.7 {
 		t.Errorf("unrelated query scored %v, want ~0.5 (the (1+cos)/2 image of an orthogonal pair)", hits[0].Score)
+	}
+}
+
+// captureEmbedder records what Upsert hands to the embedder.
+type captureEmbedder struct{ seen []string }
+
+func (c *captureEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+	c.seen = append(c.seen, text)
+	return []float32{0.1, 0.2, 0.3}, nil
+}
+
+// Session uploads reach the index through MemoryStore.Upsert rather than
+// internal/ingest, so it needs the same embedding input. Otherwise an
+// uploaded document retrieves differently from the identical content
+// ingested normally, and only one of the two paths carries the heading.
+func TestUpsertEmbedsTitleAndSection(t *testing.T) {
+	e := &captureEmbedder{}
+	m := NewMemoryStore(e)
+	err := m.Upsert(context.Background(), rag.Chunk{
+		ID: "c1", Team: "coupa", PageTitle: "AVR SOAP Service",
+		SectionPath: "Operations", Text: "The middleware uses four of them.",
+	})
+	if err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	if len(e.seen) != 1 {
+		t.Fatalf("embedder called %d times, want 1", len(e.seen))
+	}
+	for _, want := range []string{"AVR SOAP Service", "Operations", "four of them"} {
+		if !strings.Contains(e.seen[0], want) {
+			t.Errorf("embedded text = %q, missing %q", e.seen[0], want)
+		}
 	}
 }

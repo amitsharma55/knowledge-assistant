@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/example/knowledge-assistant/internal/chunker"
-	"github.com/example/knowledge-assistant/internal/rag"
 	"github.com/example/knowledge-assistant/internal/index"
+	"github.com/example/knowledge-assistant/internal/rag"
 )
 
 type Page struct {
@@ -34,7 +34,7 @@ type Embedder interface {
 func Ingest(ctx context.Context, p Page, e Embedder, idx *index.Indexer) (int, error) {
 	var docs []index.Doc
 	for _, c := range chunker.Split(p.Markdown, 800, 100) {
-		vec, err := e.Embed(ctx, c.Text)
+		vec, err := e.Embed(ctx, chunker.EmbedText(p.Title, c.SectionPath, c.Text))
 		if err != nil {
 			return 0, err
 		}

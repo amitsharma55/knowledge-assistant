@@ -774,4 +774,5 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   ```
   Then confirm the new log has no `address already in use` before trusting any result.
 - **`KA_LLM_MODE=mock` is fine throughout.** Every check in this plan reads the `retrieval` and `suggestion` events, not generated text.
+- **Headings are indexed.** `chunker.EmbedText` prepends the page title and section heading to the text that gets embedded, so a section named "Error codes" under "AVR Runbook" is findable by those words. Section headings are therefore load-bearing for retrieval, not just for humans: name them the way someone would ask.
 - **Documents are fabricated, but internally consistent.** A job name invented in Task 3 must be spelled identically in Task 6. Grep before inventing a second name for the same thing.

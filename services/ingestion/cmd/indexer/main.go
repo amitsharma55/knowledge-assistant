@@ -94,7 +94,7 @@ func main() {
 		_ = store.PutNormalized(ctx, p.SpaceKey, p.ID, p.Markdown)
 
 		for _, c := range chunker.Split(p.Markdown, 800, 100) {
-			vec, err := embedder.Embed(ctx, c.Text)
+			vec, err := embedder.Embed(ctx, chunker.EmbedText(p.Title, c.SectionPath, c.Text))
 			if err != nil {
 				log.Error("embed failed", "err", err, "page", p.ID)
 				continue
