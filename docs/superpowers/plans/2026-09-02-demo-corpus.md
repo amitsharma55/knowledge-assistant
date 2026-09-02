@@ -363,8 +363,8 @@ Write these 30 questions. Field order does not matter; `anti_keywords` is `[]` w
 33. `unans-02`, `unanswerable`, team `star` — "Which vendor supplies our actuarial pricing models?" keywords: `[]`.
 34. `unans-03`, `unanswerable`, team `hr` — "What is the parking policy at the Bloomington campus?" keywords: `[]`.
 
-(34 questions, satisfying the spec's "approximately 30". The per-category
-counts land at 13 `direct_fact`, 7 `spanning`, 6 `near_twin`, 3 `cross_team`,
+(36 questions, satisfying the spec's "approximately 30". The per-category
+counts land at 13 `direct_fact`, 7 `spanning`, 8 `near_twin`, 3 `cross_team`,
 3 `unanswerable`, 2 `temporal` — the spec's table was a target, and the extra
 `direct_fact` and `spanning` questions fall out of there being 23 documents to
 cover. `cross_team` questions carry empty `keywords` because the point is that
@@ -373,7 +373,7 @@ nothing relevant is retrievable in the asking team.)
 - [ ] **Step 3: Validate the schema**
 
 Run: `python3 scripts/check_corpus.py --validate`
-Expected: `schema ok: 34 questions`, exit 0.
+Expected: `schema ok: 36 questions`, exit 0.
 
 - [ ] **Step 4: Commit**
 
@@ -581,7 +581,7 @@ Required sections: *Scope* — **Louisiana**, the **LDI** regulator; *Submission
 
 - [ ] **Step 3: Write `louisiana-processing-rules.md`**
 
-The state-specific business logic, and the document `star-la-02` retrieves on. Required sections: *Premium aggregation by coverage* — an invented Louisiana-specific rule, stated concretely enough to be quoted; *Exclusions*; *Validation rules*. Every section must be recognisably Louisiana, since Texas equivalents follow in Task 8 and the two must not blur.
+The state-specific data elements and business logic; the document `star-la-02` and `star-la-05` retrieve on. Required sections: *Required data elements* — including **`parish_code`** (Louisiana reports by parish, not county), **`coastal_zone_indicator`**, `fortified_roof_credit` and `citizens_takeout_flag`, alongside the common exposure elements; *Louisiana Citizens takeouts* — takeout policies **excluded** from **voluntary market** counts for their first renewal term; *Exclusions*; *Validation rules*. Every section must be recognisably Louisiana, since Texas equivalents follow in Task 8 and the two must not blur.
 
 - [ ] **Step 4: Write `louisiana-report-catalog.md`**
 
@@ -591,10 +591,10 @@ Required section *Reports*: bullet list including **`la-premium-summary`** and *
 
 ```bash
 make seed
-python3 scripts/check_corpus.py --id star-pipe-01 --id star-pipe-02 --id star-la-01 --id star-la-02 --id star-la-03 --id star-la-04 --scores
+python3 scripts/check_corpus.py --id star-pipe-01 --id star-pipe-02 --id star-la-01 --id star-la-02 --id star-la-03 --id star-la-04 --id star-la-05 --scores
 ```
 
-Expected: 6/6 passed. `anti_keywords` for Texas cannot fail yet — no Texas document exists — so these results are provisional until Task 8.
+Expected: 7/7 passed. `anti_keywords` for Texas cannot fail yet — no Texas document exists — so these results are provisional until Task 8.
 
 - [ ] **Step 6: Commit**
 
@@ -623,7 +623,9 @@ Mirror the Louisiana overview's section structure. Required: *Scope* — **Texas
 
 - [ ] **Step 2: Write `texas-processing-rules.md`**
 
-Required sections mirroring Louisiana's: *Premium aggregation by coverage* — a Texas rule that is **materially different** from Louisiana's, not a reworded copy, matching `star-tx-02`; *Exclusions*; *Validation rules*; *Changelog* — a dated entry in **2026-06** adding catastrophe exposure reporting, matching `star-tx-04`.
+Required sections mirroring Louisiana's, with values that are **materially different**, not reworded copies: *Required data elements* — including **`county_fips`**, **`windstorm_pool_indicator`**, `tier_1_coastal_county` and `mitigation_credit_code`, matching `star-tx-02`; *TWIA-ceded exposure* — **ceded** exposure **reported separately** from retained, tier-1 coastal counties aggregated on their own, matching `star-tx-05`; *Exclusions*; *Validation rules*; *Changelog* — a dated entry in **2026-06** adding catastrophe exposure reporting, matching `star-tx-04`.
+
+The word "parish" must not appear in any Texas document, and "county" must not appear in any Louisiana one. These are the terms the `anti_keywords` police, and they are the confusion with real consequences in a regulatory filing.
 
 - [ ] **Step 3: Write `texas-report-catalog.md`**
 
@@ -636,7 +638,7 @@ make seed
 python3 scripts/check_corpus.py --team star --exclude-category cross_team --scores
 ```
 
-Expected: 11/11 passed — the 10 Star questions plus `unans-02` — with **zero** `LEAKED anti-keywords` lines. `cross-02` is deferred to Task 10 because whether the suggestion fires depends on the relevance floor, which is not calibrated until then.
+Expected: 13/13 passed — the 12 Star questions plus `unans-02` — with **zero** `LEAKED anti-keywords` lines. `cross-02` is deferred to Task 10 because whether the suggestion fires depends on the relevance floor, which is not calibrated until then.
 
 A leak here is the most informative failure in the plan: it means retrieval cannot separate two near-identical documents, which is exactly the risk the near-twin pair exists to expose. Do not fix it by making the documents more different — that destroys the test. Record the failure, leave it, and raise it: it is evidence for the reranking work, and a demo of the fix is worth more than a corpus that never had the problem.
 
@@ -716,7 +718,7 @@ curl -X DELETE http://localhost:9200/kb-chunks && make seed
 python3 scripts/check_corpus.py --scores
 ```
 
-Expected: 31/34 or better. The three `cross_team` questions pass only if the suggestion fires, which depends on the floor being calibrated — if they fail here, that is expected; continue to Step 2 and re-check after Step 4.
+Expected: 33/36 or better. The three `cross_team` questions pass only if the suggestion fires, which depends on the floor being calibrated — if they fail here, that is expected; continue to Step 2 and re-check after Step 4.
 
 - [ ] **Step 2: Collect the two score distributions**
 
@@ -746,7 +748,7 @@ python3 scripts/check_corpus.py --scores
 go test ./...
 ```
 
-Expected: 34/34 passed, including all three `cross_team` questions now that the floor separates the sets; all Go packages ok. If the sets overlapped at Step 3 and the floor was left unchanged, the `cross_team` questions will still fail — record that and report it rather than forcing a number.
+Expected: 36/36 passed, including all three `cross_team` questions now that the floor separates the sets; all Go packages ok. If the sets overlapped at Step 3 and the floor was left unchanged, the `cross_team` questions will still fail — record that and report it rather than forcing a number.
 
 - [ ] **Step 7: Commit**
 
