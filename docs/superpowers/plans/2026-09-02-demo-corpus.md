@@ -625,7 +625,9 @@ Mirror the Louisiana overview's section structure. Required: *Scope* — **Texas
 
 Required sections mirroring Louisiana's, with values that are **materially different**, not reworded copies: *Required data elements* — including **`county_fips`**, **`windstorm_pool_indicator`**, `tier_1_coastal_county` and `mitigation_credit_code`, matching `star-tx-02`; *TWIA-ceded exposure* — **ceded** exposure **reported separately** from retained, tier-1 coastal counties aggregated on their own, matching `star-tx-05`; *Exclusions*; *Validation rules*; *Changelog* — a dated entry in **2026-06** adding catastrophe exposure reporting, matching `star-tx-04`.
 
-The word "parish" must not appear in any Texas document, and "county" must not appear in any Louisiana one. These are the terms the `anti_keywords` police, and they are the confusion with real consequences in a regulatory filing.
+**No Louisiana document may mention Texas, TDI or TWIA, and no Texas document may mention Louisiana, LDI or Louisiana Citizens** — not even in a passing cross-reference such as "unlike Texas". A single such mention trips the `anti_keywords` regardless of whether the wrong state's *content* was retrieved, and defeats the test. State the rules positively instead: "specific to Louisiana", never "unlike Texas".
+
+Writing `parish_code` versus `county_fips` correctly is the substance of the test: confusing them in a regulatory filing has real consequences. The bare words "parish" and "county" are fine in their own state's documents ("Louisiana reports by parish, not county" is good writing and trips nothing).
 
 - [ ] **Step 3: Write `texas-report-catalog.md`**
 
