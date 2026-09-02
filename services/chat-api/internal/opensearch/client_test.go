@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/example/knowledge-assistant/internal/embed"
+	"github.com/example/knowledge-assistant/internal/rag"
+	"github.com/example/knowledge-assistant/internal/team"
 )
 
 // captureBody stands in for OpenSearch and records the query it was sent.
@@ -70,13 +72,57 @@ func TestScopeFilterZeroGroupsStillConstrainsACL(t *testing.T) {
 	if !strings.Contains(string(raw), `"aclGroups"`) {
 		t.Fatalf("zero-group scope produced a filter with no aclGroups constraint at all, so every doc in the team (including ACL-restricted ones) is visible: %s", raw)
 	}
-	// scope.Groups() is nil (not []string{}) in this case. A nil slice
-	// marshals to JSON null, which OpenSearch's "terms" query rejects with a
-	// parse error. The marshalled JSON must contain "aclGroups":[] , not
-	// "aclGroups":null.
-	if !strings.Contains(string(raw), `"aclGroups":[]`) {
-		t.Fatalf("zero-group scope must marshal aclGroups as [] not null (OpenSearch rejects null in a terms query): %s", raw)
+	// The constraint must come from the "no aclGroups field" branch alone.
+	// See TestScopeFilterZeroGroupsEmitsNoEmptyTermsQuery for why a terms
+	// clause cannot carry it here.
+	if !strings.Contains(string(raw), `"must_not"`) {
+		t.Fatalf("zero-group scope must constrain via the must_not-exists branch: %s", raw)
 	}
+}
+
+// A "terms" query with an empty array is rejected by OpenSearch when it sits
+// inside a kNN filter -- it fails the whole search with "query must be
+// rewritten first" (verified against OpenSearch 2.15), so every request from
+// a caller with no groups 400s. Emitting no terms clause at all is both
+// valid and semantically identical: with minimum_should_match:1, the
+// remaining must_not-exists branch already limits the caller to unrestricted
+// chunks, matching MemoryStore.aclOK.
+func TestScopeFilterZeroGroupsEmitsNoEmptyTermsQuery(t *testing.T) {
+	scope := scopeFor(t, "coupa", "coupa") // zero groups
+	raw, err := json.Marshal(scopeFilter(scope))
+	if err != nil {
+		t.Fatalf("marshal filter: %v", err)
+	}
+	if strings.Contains(string(raw), `"aclGroups":[]`) || strings.Contains(string(raw), `"aclGroups":null`) {
+		t.Errorf("filter contains an empty/null aclGroups terms query, which OpenSearch rejects inside a kNN filter: %s", raw)
+	}
+}
+
+// The terms clause must still appear when the caller does have groups --
+// dropping it there would hide every ACL-restricted chunk they may see.
+func TestScopeFilterWithGroupsKeepsTermsQuery(t *testing.T) {
+	scope := scopeWithGroups(t, "coupa", "finance", "ap")
+	raw, err := json.Marshal(scopeFilter(scope))
+	if err != nil {
+		t.Fatalf("marshal filter: %v", err)
+	}
+	for _, want := range []string{`"terms"`, "finance", "ap"} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("filter for a caller with groups is missing %s: %s", want, raw)
+		}
+	}
+}
+
+// scopeWithGroups builds a coupa-scoped request for a caller who does belong
+// to ACL groups; scopeFor always yields zero groups.
+func scopeWithGroups(t *testing.T, slug string, groups ...string) rag.Scope {
+	t.Helper()
+	r := team.NewRegistry(team.DefaultInfos())
+	active, err := r.Parse(slug)
+	if err != nil {
+		t.Fatalf("parse %q: %v", slug, err)
+	}
+	return rag.NewScope(active, nil, groups)
 }
 
 // containsTermTeam walks the filter looking for {"term":{"team":<slug>}} that

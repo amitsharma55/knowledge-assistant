@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/example/knowledge-assistant/internal/rag"
 )
@@ -51,7 +53,11 @@ func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k in
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("opensearch %d", resp.StatusCode)
+		// Include the response body: OpenSearch explains *why* a search was
+		// rejected (a filter clause it cannot rewrite, an unmapped field),
+		// and a bare status code turns those into a guessing game.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("opensearch %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var out struct {
 		Hits struct {
@@ -105,22 +111,27 @@ func scopeFilter(scope rag.Scope) map[string]any {
 	// branch — i.e. only unrestricted chunks are visible. That matches
 	// MemoryStore.aclOK(chunkGroups, userGroups), which denies whenever
 	// userGroups is empty and chunkGroups is non-empty.
-	groups := scope.Groups()
-	if groups == nil {
-		// A nil slice marshals to JSON null, which OpenSearch's "terms"
-		// query rejects with a parse error. Normalize to an empty slice so
-		// it marshals to [] and the should-clause below simply matches no
-		// groups, per the comment above.
-		groups = []string{}
+	// The unrestricted-chunk branch is always present and is the only branch
+	// a caller with no groups gets.
+	should := []any{
+		map[string]any{"bool": map[string]any{
+			"must_not": map[string]any{"exists": map[string]any{"field": "aclGroups"}},
+		}},
+	}
+	// The terms clause is emitted only when there is at least one group to
+	// match. A "terms" query over an empty array (or a nil slice, which
+	// marshals to null) is rejected by OpenSearch inside a kNN filter --
+	// the whole search fails with "query must be rewritten first" -- so the
+	// clause is omitted rather than emitted empty. Semantics are unchanged:
+	// with minimum_should_match:1 an empty terms clause could never have
+	// matched anything anyway, leaving the same unrestricted-only view that
+	// MemoryStore.aclOK gives a caller with no groups.
+	if groups := scope.Groups(); len(groups) > 0 {
+		should = append(should, map[string]any{"terms": map[string]any{"aclGroups": groups}})
 	}
 	must = append(must, map[string]any{"bool": map[string]any{
 		"minimum_should_match": 1,
-		"should": []any{
-			map[string]any{"terms": map[string]any{"aclGroups": groups}},
-			map[string]any{"bool": map[string]any{
-				"must_not": map[string]any{"exists": map[string]any{"field": "aclGroups"}},
-			}},
-		},
+		"should":               should,
 	}})
 	return map[string]any{"bool": map[string]any{"must": must}}
 }
