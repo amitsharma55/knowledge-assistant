@@ -26,7 +26,7 @@ type Info struct {
 // DefaultInfos is the team set for this phase.
 func DefaultInfos() []Info {
 	return []Info{
-		{Slug: "coupa", DisplayName: "Coupa"},
+		{Slug: "coupa", DisplayName: "Coupa AWS Middleware"},
 		{Slug: "star", DisplayName: "Star"},
 		{Slug: "hr", DisplayName: "HR"},
 	}

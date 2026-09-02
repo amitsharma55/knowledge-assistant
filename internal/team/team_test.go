@@ -50,3 +50,25 @@ func TestAuthorize(t *testing.T) {
 		t.Error("Authorize(coupa, zero team) = nil, want ErrNotAllowed")
 	}
 }
+
+func TestDefaultInfosDisplayNames(t *testing.T) {
+	want := map[string]string{
+		"coupa": "Coupa AWS Middleware",
+		"star":  "Star",
+		"hr":    "HR",
+	}
+	infos := DefaultInfos()
+	if len(infos) != len(want) {
+		t.Fatalf("DefaultInfos() returned %d teams, want %d", len(infos), len(want))
+	}
+	for _, info := range infos {
+		w, ok := want[info.Slug]
+		if !ok {
+			t.Errorf("unexpected team slug %q", info.Slug)
+			continue
+		}
+		if info.DisplayName != w {
+			t.Errorf("DisplayName for %q = %q, want %q", info.Slug, info.DisplayName, w)
+		}
+	}
+}
