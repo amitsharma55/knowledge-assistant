@@ -22,18 +22,24 @@ type Config struct {
 	TopK       int
 	RerankTopN int
 	// RelevanceFloor is a similarity cutoff on the (1+cos)/2 scale that both
-	// retrievers now report -- see opensearch.similarity. It gates only the
-	// cross-team suggestion: chunks below it are still sent to the model,
-	// and the "I don't have that information" refusal comes from the prompt,
-	// not from this value.
+	// retrievers report -- see opensearch.similarity. It gates only the
+	// cross-team suggestion: chunks below it are still sent to the model, and
+	// the "I don't have that information" refusal comes from the prompt, not
+	// from this value.
 	//
-	// The default is empirical and model-specific. Measured against the
-	// fixtures corpus with nomic-embed-text, answerable questions score
-	// 0.82-0.94 and off-corpus questions still score 0.72-0.74 (embeddings
-	// are anisotropic, so unrelated text is nowhere near 0.5). 0.78 sits in
-	// that gap. Changing KA_EMBED_MODEL invalidates it. It is calibrated
-	// from two data points over a small corpus and should be re-derived
-	// against the evaluation set once one exists.
+	// Calibrated against the 36-question set in fixtures/tests.jsonl over the
+	// 23-document corpus, using nomic-embed-text:
+	//
+	//	30 answerable questions      lowest top score  0.8421
+	//	6 not-answerable-here        highest top score 0.7739
+	//
+	// The default is the midpoint of that gap, rounded. The two populations
+	// separate cleanly, so any value in (0.7739, 0.8421) is correct for this
+	// corpus; the midpoint leaves the most room on both sides.
+	//
+	// Re-derive it with `python3 scripts/check_corpus.py --scores` after
+	// changing KA_EMBED_MODEL or materially changing the corpus. Absolute
+	// cosine thresholds do not transfer between embedding models.
 	RelevanceFloor float64
 }
 
@@ -51,7 +57,7 @@ func Load() Config {
 		BedrockModelID:  envOr("KA_BEDROCK_MODEL", "anthropic.claude-sonnet-4-6-v1:0"),
 		TopK:            envInt("KA_TOP_K", 8),
 		RerankTopN:      envInt("KA_RERANK_TOP_N", 4),
-		RelevanceFloor:  envFloat("KA_RELEVANCE_FLOOR", 0.78),
+		RelevanceFloor:  envFloat("KA_RELEVANCE_FLOOR", 0.81),
 	}
 }
 

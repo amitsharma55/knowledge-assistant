@@ -51,14 +51,18 @@ for tests and for exercising the pipeline offline — retrieval results under
 it are meaningless, so it is never the default and an unknown mode is a
 startup error rather than a silent fall back to it.
 
-`KA_RELEVANCE_FLOOR` (default `0.78`) is a cutoff on the `(1+cos)/2` scale
+`KA_RELEVANCE_FLOOR` (default `0.81`) is a cutoff on the `(1+cos)/2` scale
 both retrievers report. It gates only the cross-team suggestion — chunks
 below it still reach the model, and the refusal wording comes from the
-prompt. The value is empirical and tied to the embedding model: with
-`nomic-embed-text` over the fixtures, answerable questions score 0.82–0.94
-and off-corpus ones still score 0.72–0.74, because embeddings are
-anisotropic and unrelated text sits nowhere near 0.5. Re-derive it if you
-change `KA_EMBED_MODEL`.
+prompt.
+
+The value is calibrated against `fixtures/tests.jsonl`: across 36 questions
+over the 23-document corpus, the 30 answerable ones score no lower than
+0.8421 and the 6 that are not answerable in the asking team score no higher
+than 0.7739. The default is the midpoint of that gap. Re-derive it with
+`python3 scripts/check_corpus.py --scores` after changing `KA_EMBED_MODEL`
+or the corpus — absolute cosine thresholds do not transfer between models,
+and embeddings are anisotropic, so unrelated text sits nowhere near 0.5.
 
 Both chat-api and the indexer build their embedder from `embed.New`, so they
 cannot be configured onto different models: mismatched document and query
