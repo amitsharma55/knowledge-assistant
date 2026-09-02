@@ -12,10 +12,11 @@ grounded in markdown documentation stored in a GitLab repo and/or project wiki.
 ## Local dev
 
 ```sh
-# start OpenSearch + LocalStack (S3) + Postgres
+# start OpenSearch + LocalStack (S3) + Postgres + Ollama
 make dev-up
 
 # seed sample docs and index them
+# (depends on embed-pull, which downloads the embedding model on first run)
 make seed
 
 # run chat-api with mock Bedrock
@@ -29,6 +30,48 @@ make run-ui
 Set `KA_LLM_MODE=mock` to skip Bedrock calls; the API returns canned answers
 using retrieved chunks so you can iterate on retrieval without spending
 tokens.
+
+## Embeddings
+
+Text is embedded by a local Ollama container (`nomic-embed-text`, 768
+dimensions), so local dev needs no API key and costs nothing per token.
+`make embed-pull` fetches the model; `make seed` depends on it. Note that
+`make dev-down` passes `-v` and removes the volume holding it, so the next
+pull re-downloads ~270MB.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `KA_EMBED_MODE` | `ollama` | `ollama` or `mock` |
+| `KA_OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
+| `KA_EMBED_MODEL` | `nomic-embed-text` | Model name |
+| `KA_EMBED_DIM` | `768` | Vector width; must match the model |
+
+`KA_EMBED_MODE=mock` uses hash vectors with no semantic content. It exists
+for tests and for exercising the pipeline offline — retrieval results under
+it are meaningless, so it is never the default and an unknown mode is a
+startup error rather than a silent fall back to it.
+
+`KA_RELEVANCE_FLOOR` (default `0.78`) is a cutoff on the `(1+cos)/2` scale
+both retrievers report. It gates only the cross-team suggestion — chunks
+below it still reach the model, and the refusal wording comes from the
+prompt. The value is empirical and tied to the embedding model: with
+`nomic-embed-text` over the fixtures, answerable questions score 0.82–0.94
+and off-corpus ones still score 0.72–0.74, because embeddings are
+anisotropic and unrelated text sits nowhere near 0.5. Re-derive it if you
+change `KA_EMBED_MODEL`.
+
+Both chat-api and the indexer build their embedder from `embed.New`, so they
+cannot be configured onto different models: mismatched document and query
+vectors would return confident, unrelated results with no error anywhere.
+
+The vector width is fixed in the index mapping when the index is created.
+Changing `KA_EMBED_MODEL` to a model of a different width therefore requires
+a reindex — `EnsureIndex` refuses to proceed and tells you so rather than
+dropping your corpus:
+
+```sh
+curl -X DELETE http://localhost:9200/kb-chunks && make seed
+```
 
 ## Teams
 

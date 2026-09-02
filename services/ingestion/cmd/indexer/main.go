@@ -41,9 +41,18 @@ func main() {
 	}
 
 	store := storage.LocalDisk{Root: *dataDir}
-	embedder := embed.Mock{Dim: 1024}
+	// Same constructor as chat-api: the vectors written here and the query
+	// vectors there have to come from one model.
+	embedOpts := embed.OptionsFromEnv()
+	embedder, embedDim, err := embed.New(embedOpts)
+	if err != nil {
+		log.Error("embedder config invalid", "err", err)
+		os.Exit(1)
+	}
+	log.Info("using embedder", "mode", embedOpts.Mode, "model", embedOpts.Model, "dim", embedDim)
+
 	idxr := &index.Indexer{BaseURL: *osURL, Index: *osIdx, HTTP: &http.Client{Timeout: 30 * time.Second}}
-	if err := idxr.EnsureIndex(ctx, 1024); err != nil {
+	if err := idxr.EnsureIndex(ctx, embedDim); err != nil {
 		log.Error("ensure index failed; refusing to ingest into a stale/invalid index", "err", err)
 		os.Exit(1)
 	}

@@ -34,7 +34,16 @@ func main() {
 	cfg := config.Load()
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	embedder := rag.Embedder(embed.Mock{Dim: 1024})
+	// Built from the shared constructor so this and the indexer cannot end
+	// up on different models; mismatched vectors return results that look
+	// fine and mean nothing.
+	embedOpts := embed.OptionsFromEnv()
+	embedder, embedDim, err := embed.New(embedOpts)
+	if err != nil {
+		log.Error("embedder config invalid", "err", err)
+		os.Exit(1)
+	}
+	log.Info("using embedder", "mode", embedOpts.Mode, "model", embedOpts.Model, "dim", embedDim)
 
 	var retriever rag.Retriever
 	switch {

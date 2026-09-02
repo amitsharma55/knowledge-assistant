@@ -16,15 +16,24 @@ type Config struct {
 	AnthropicModel  string
 	BedrockRegion   string
 	BedrockModelID  string
-	EmbedModelID    string
-	TopK            int
-	RerankTopN      int
-	// RelevanceFloor is a raw similarity-score cutoff, not a normalized
-	// probability: MemoryStore reports raw cosine similarity, while
-	// OpenSearch's lucene cosinesimil reports a normalized (1+cos)/2. The
-	// same numeric value therefore means different things in fixtures mode
-	// vs. real OpenSearch, and in any future backend, so this must be tuned
-	// per deployment mode rather than treated as a portable constant.
+	// Embedder settings are deliberately absent: they are read by
+	// embed.OptionsFromEnv so that chat-api and the indexer cannot be
+	// configured onto different models. See internal/embed/new.go.
+	TopK       int
+	RerankTopN int
+	// RelevanceFloor is a similarity cutoff on the (1+cos)/2 scale that both
+	// retrievers now report -- see opensearch.similarity. It gates only the
+	// cross-team suggestion: chunks below it are still sent to the model,
+	// and the "I don't have that information" refusal comes from the prompt,
+	// not from this value.
+	//
+	// The default is empirical and model-specific. Measured against the
+	// fixtures corpus with nomic-embed-text, answerable questions score
+	// 0.82-0.94 and off-corpus questions still score 0.72-0.74 (embeddings
+	// are anisotropic, so unrelated text is nowhere near 0.5). 0.78 sits in
+	// that gap. Changing KA_EMBED_MODEL invalidates it. It is calibrated
+	// from two data points over a small corpus and should be re-derived
+	// against the evaluation set once one exists.
 	RelevanceFloor float64
 }
 
@@ -40,10 +49,9 @@ func Load() Config {
 		AnthropicModel:  envOr("KA_ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929"),
 		BedrockRegion:   envOr("AWS_REGION", "us-east-1"),
 		BedrockModelID:  envOr("KA_BEDROCK_MODEL", "anthropic.claude-sonnet-4-6-v1:0"),
-		EmbedModelID:    envOr("KA_EMBED_MODEL", "amazon.titan-embed-text-v2:0"),
 		TopK:            envInt("KA_TOP_K", 8),
 		RerankTopN:      envInt("KA_RERANK_TOP_N", 4),
-		RelevanceFloor:  envFloat("KA_RELEVANCE_FLOOR", 0.25),
+		RelevanceFloor:  envFloat("KA_RELEVANCE_FLOOR", 0.78),
 	}
 }
 

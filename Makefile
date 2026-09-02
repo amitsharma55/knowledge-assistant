@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down seed run-api run-ingest run-ui test build
+.PHONY: dev-up dev-down embed-pull seed run-api run-ingest run-ui test build
 
 dev-up:
 	docker compose -f deploy/docker/docker-compose.yml up -d
@@ -6,7 +6,14 @@ dev-up:
 dev-down:
 	docker compose -f deploy/docker/docker-compose.yml down -v
 
-seed:
+# Pull the embedding model into the ollama container. Separate target
+# because the first pull downloads ~270MB; seed depends on it so an
+# un-pulled model surfaces here rather than as a 404 mid-ingest.
+embed-pull:
+	docker compose -f deploy/docker/docker-compose.yml exec -T ollama \
+		ollama pull $${KA_EMBED_MODEL:-nomic-embed-text}
+
+seed: embed-pull
 	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/coupa -team coupa
 	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/star  -team star
 	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/hr    -team hr

@@ -28,3 +28,17 @@ services:
       POSTGRES_DB: ka
     ports:
       - "5432:5432"
+
+  # Local embedding model. Keeps the demo keyless and offline: chat-api and
+  # the indexer both embed through this. The named volume holds the pulled
+  # model across restarts. Note `make dev-down` passes -v, which removes it,
+  # so the next `make embed-pull` re-downloads ~270MB.
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "11434:11434"
+
+volumes:
+  ollama-models:
