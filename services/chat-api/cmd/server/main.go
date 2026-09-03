@@ -16,6 +16,8 @@ import (
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
 	"github.com/example/knowledge-assistant/internal/rag"
+	"github.com/example/knowledge-assistant/internal/rerank"
+	"github.com/example/knowledge-assistant/internal/rewrite"
 	"github.com/example/knowledge-assistant/internal/team"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/anthropic"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/bedrock"
@@ -93,11 +95,59 @@ func main() {
 		LLM:            llm,
 		TopK:           cfg.TopK,
 		RerankN:        cfg.RerankTopN,
+		MaxContext:     cfg.MaxContext,
 		RelevanceFloor: cfg.RelevanceFloor,
 		Log:            log,
 	}
 	if c, ok := retriever.(rag.Counter); ok {
 		orch.Counter = c
+	}
+	switch cfg.RerankMode {
+	case "ollama":
+		orch.Reranker = rerank.Ollama{
+			BaseURL: cfg.RerankURL,
+			Model:   cfg.RerankModel,
+			HTTP:    &http.Client{Timeout: cfg.RerankTimeout},
+		}
+		log.Info("using reranker", "mode", "ollama", "model", cfg.RerankModel,
+			"url", cfg.RerankURL, "timeout", cfg.RerankTimeout)
+	case "", "off":
+		log.Info("reranker disabled; chunks stay in vector-search order")
+	default:
+		log.Error("unknown KA_RERANK_MODE; want \"ollama\" or \"off\"", "mode", cfg.RerankMode)
+		os.Exit(2)
+	}
+
+	switch cfg.RewriteMode {
+	case "ollama":
+		orch.Rewriter = rewrite.Ollama{
+			BaseURL: cfg.RewriteURL,
+			Model:   cfg.RewriteModel,
+			HTTP:    &http.Client{Timeout: cfg.RewriteTimeout},
+		}
+		log.Info("using query rewriter", "mode", "ollama", "model", cfg.RewriteModel,
+			"url", cfg.RewriteURL, "timeout", cfg.RewriteTimeout)
+	case "", "off":
+		log.Info("query rewriter disabled; follow-ups retrieve on their literal words")
+	default:
+		log.Error("unknown KA_REWRITE_MODE; want \"ollama\" or \"off\"", "mode", cfg.RewriteMode)
+		os.Exit(2)
+	}
+
+	switch cfg.RetrieveMode {
+	case "dual":
+		orch.DualRetrieval = true
+		log.Info("using dual retrieval; searching the question and its rewrite, then merging")
+	case "", "single":
+	default:
+		log.Error("unknown KA_RETRIEVE_MODE; want \"single\" or \"dual\"", "mode", cfg.RetrieveMode)
+		os.Exit(2)
+	}
+	if orch.DualRetrieval && orch.Rewriter == nil {
+		// Dual retrieval merges a question with its rewrite. With no
+		// rewriter there is no second query, so this is a configuration
+		// that silently does nothing.
+		log.Warn("KA_RETRIEVE_MODE=dual has no effect while KA_REWRITE_MODE is off")
 	}
 
 	r := chi.NewRouter()

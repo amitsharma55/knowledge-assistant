@@ -20,9 +20,17 @@ type Client struct {
 }
 
 // Search runs k-NN over the embedding field, filtered to the scope's team.
-// TODO(hybrid): switch to `hybrid` query + RRF once the neural-search plugin
-// and a search pipeline are provisioned in the target OpenSearch cluster.
-// For local dev / vanilla OpenSearch, plain k-NN + text match fallback works.
+// The scores it returns are on the (1+cos)/2 scale RelevanceFloor expects.
+//
+// A BM25 half fused by RRF was built and measured here, and removed: it fixed
+// literal-token questions (the chunk holding `AVR-TIMEOUT` went from rank 9 to
+// rank 1, and stopped flapping) but cost more than it gained on near-identical
+// documents. Asked for the Louisiana data call's deadline, seven of the
+// query's eight terms match the Texas document's identically titled section
+// verbatim, so BM25 promoted it from rank 15 to rank 3 and it reached the
+// model. Halving the keyword vote did not fix that -- both rankers retrieve
+// the wrong state's section, so it earns votes from both. Corpus check: kNN
+// 35/34, hybrid 34/33/33. See git history if revisiting.
 func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k int) ([]rag.Chunk, error) {
 	if scope.IsZero() {
 		return nil, fmt.Errorf("opensearch: search called with an unscoped request")
@@ -31,7 +39,7 @@ func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k in
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
 	}
-	body := map[string]any{
+	return c.search(ctx, map[string]any{
 		"size": k,
 		"query": map[string]any{
 			"knn": map[string]any{
@@ -42,7 +50,11 @@ func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k in
 				},
 			},
 		},
-	}
+	})
+}
+
+// search posts one query body and decodes the hits.
+func (c *Client) search(ctx context.Context, body map[string]any) ([]rag.Chunk, error) {
 	buf, _ := json.Marshal(body)
 	url := fmt.Sprintf("%s/%s/_search", c.BaseURL, c.Index)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
@@ -56,8 +68,8 @@ func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k in
 		// Include the response body: OpenSearch explains *why* a search was
 		// rejected (a filter clause it cannot rewrite, an unmapped field),
 		// and a bare status code turns those into a guessing game.
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return nil, fmt.Errorf("opensearch %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("opensearch %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	var out struct {
 		Hits struct {
@@ -72,9 +84,9 @@ func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k in
 	}
 	chunks := make([]rag.Chunk, 0, len(out.Hits.Hits))
 	for _, h := range out.Hits.Hits {
-		c := h.Source
-		c.Score = h.Score
-		chunks = append(chunks, c)
+		ch := h.Source
+		ch.Score = h.Score
+		chunks = append(chunks, ch)
 	}
 	return chunks, nil
 }
@@ -85,6 +97,9 @@ func (c *Client) Search(ctx context.Context, query string, scope rag.Scope, k in
 // extra kNN round trip is acceptable. It reuses scopeFilter so the team and
 // ACL constraints are identical to Search's.
 func (c *Client) Count(ctx context.Context, query string, scope rag.Scope, floor float64) (int, error) {
+	if scope.IsZero() {
+		return 0, fmt.Errorf("opensearch: count called with an unscoped request")
+	}
 	hits, err := c.Search(ctx, query, scope, 1000)
 	if err != nil {
 		return 0, err
