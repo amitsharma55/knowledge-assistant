@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down embed-pull seed run-api run-ingest run-ui test build
+.PHONY: dev-up dev-down embed-pull reset-index seed run-api run-ingest run-ui test build
 
 dev-up:
 	docker compose -f deploy/docker/docker-compose.yml up -d
@@ -13,7 +13,16 @@ embed-pull:
 	docker compose -f deploy/docker/docker-compose.yml exec -T ollama \
 		ollama pull $${KA_EMBED_MODEL:-nomic-embed-text}
 
-seed: embed-pull
+# Drop the fixture index before reseeding. A chunk's document id hashes its
+# text, so any change to the chunker gives every chunk a new id: the reseed
+# writes a full new copy and leaves the old one behind, and retrieval then
+# ranks stale chunks against fresh ones. Safe here because this index holds
+# nothing but fixtures; EnsureIndex deliberately refuses to drop an index on
+# its own, so the deletion is explicit and lives only in this dev target.
+reset-index:
+	@curl -s -X DELETE "$${KA_OPENSEARCH_URL:-http://localhost:9200}/$${KA_OPENSEARCH_INDEX:-kb-chunks}" >/dev/null || true
+
+seed: embed-pull reset-index
 	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/coupa -team coupa
 	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/star  -team star
 	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/hr    -team hr

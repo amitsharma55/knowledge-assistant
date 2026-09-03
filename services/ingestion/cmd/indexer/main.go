@@ -151,9 +151,12 @@ func loadFixtures(dir, space string) ([]page, error) {
 		}
 		id := strings.TrimSuffix(e.Name(), ".md")
 		pages = append(pages, page{
-			SpaceKey:  space,
-			ID:        id,
-			Title:     strings.ReplaceAll(id, "-", " "),
+			SpaceKey: space,
+			ID:       id,
+			// Prefer the document's own H1 over the filename slug: the slug
+			// is what citations were showing, so a page headed
+			// "AVR Field Mapping" was cited as "avr field mapping".
+			Title:     chunker.Title(string(body), strings.ReplaceAll(id, "-", " ")),
 			Markdown:  string(body),
 			WebURL:    "file://" + filepath.Join(dir, e.Name()),
 			UpdatedAt: time.Now(),
