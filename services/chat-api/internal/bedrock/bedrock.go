@@ -16,8 +16,13 @@ package bedrock
 //   {
 //     "anthropic_version": "bedrock-2023-05-31",
 //     "max_tokens": 1024,
-//     "messages": [{"role":"user","content": prompt}]
+//     "system": prompt.System,
+//     "messages": [{"role":"user","content": prompt.User}]
 //   }
+//
+// Keep the instructions in "system" and only the context and question in the
+// user turn -- concatenating them lets the model quote the rules back as if
+// they were retrieved content.
 //
 // Then iterate the event stream, decoding chunks of type
 // "content_block_delta" and forwarding delta.text as StreamEvent{Type:"token"}.

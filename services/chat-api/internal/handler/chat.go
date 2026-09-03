@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -56,6 +57,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Ensure a persistent chat exists. Auto-title from first message.
 	var chat repo.Chat
+	var history []rag.Turn
 	if h.Repo != nil {
 		if req.ChatID == "" {
 			c, err := h.Repo.CreateChat(r.Context(), uid, scope.Team().Slug(), autoTitle(req.Message))
@@ -81,6 +83,9 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			chat.ID = req.ChatID
 		}
+		// Read the conversation before appending this turn, so the question
+		// being answered is not also sitting in its own history.
+		history = h.history(r.Context(), uid, scope.Team().Slug(), chat.ID)
 		if _, err := h.Repo.AppendMessage(r.Context(), chat.ID, "user", req.Message, nil); err != nil {
 			h.Log.Warn("persist user message failed", "err", err)
 		}
@@ -94,7 +99,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	events := make(chan rag.StreamEvent, 32)
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- h.Orchestrator.Answer(r.Context(), req.Message, scope, sessRetriever, events)
+		errCh <- h.Orchestrator.Answer(r.Context(), req.Message, history, scope, sessRetriever, events)
 		close(events)
 	}()
 
@@ -134,4 +139,31 @@ func autoTitle(msg string) string {
 		return msg[:57] + "…"
 	}
 	return msg
+}
+
+// maxHistoryTurns bounds how much conversation is replayed to the model. Six
+// turns is enough to resolve a follow-up and its referents; beyond that the
+// prompt grows on every exchange for context nobody is using.
+const maxHistoryTurns = 6
+
+// history loads the conversation so far, oldest first. A failure here costs
+// the follow-up its context, not the answer, so it is logged and dropped --
+// the same call to Answer still runs, just without history.
+func (h *ChatHandler) history(ctx context.Context, uid, team, chatID string) []rag.Turn {
+	if h.Repo == nil || chatID == "" {
+		return nil
+	}
+	msgs, err := h.Repo.ListMessages(ctx, uid, team, chatID)
+	if err != nil {
+		h.Log.Warn("load chat history failed; answering without it", "err", err, "chat", chatID)
+		return nil
+	}
+	if len(msgs) > maxHistoryTurns {
+		msgs = msgs[len(msgs)-maxHistoryTurns:]
+	}
+	out := make([]rag.Turn, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, rag.Turn{Role: m.Role, Content: m.Content})
+	}
+	return out
 }

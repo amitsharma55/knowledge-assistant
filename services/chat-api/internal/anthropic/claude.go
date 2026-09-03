@@ -30,6 +30,7 @@ type messagesReq struct {
 	Model     string    `json:"model"`
 	MaxTokens int       `json:"max_tokens"`
 	Stream    bool      `json:"stream"`
+	System    string    `json:"system,omitempty"`
 	Messages  []message `json:"messages"`
 }
 
@@ -38,16 +39,47 @@ type message struct {
 	Content string `json:"content"`
 }
 
-// Stream sends `prompt` as a single user message and forwards Claude's
+// messages renders the prompt as the Messages API's alternating turns: the
+// conversation so far, then this turn's context and question.
+//
+// The API requires the sequence to start with a user turn and alternate, so a
+// history that begins with an assistant message -- or repeats a role, which a
+// failed turn can leave behind in storage -- is dropped rather than sent. A
+// rejected request would cost the answer entirely; losing a turn of context
+// only costs some of it.
+func messages(p rag.Prompt) []message {
+	out := make([]message, 0, len(p.History)+1)
+	want := "user"
+	for _, t := range p.History {
+		if t.Role != want || strings.TrimSpace(t.Content) == "" {
+			continue
+		}
+		out = append(out, message{Role: t.Role, Content: t.Content})
+		if want == "user" {
+			want = "assistant"
+		} else {
+			want = "user"
+		}
+	}
+	// This turn is a user turn, so anything ending on one must go.
+	if n := len(out); n > 0 && out[n-1].Role == "user" {
+		out = out[:n-1]
+	}
+	return append(out, message{Role: "user", Content: p.User})
+}
+
+// Stream sends the prompt's instructions in the request's top-level `system`
+// field and its context and question as the user turn, then forwards Claude's
 // content_block_delta text events to `out` as rag.StreamEvent{Type:"token"}.
-func (c *Client) Stream(ctx context.Context, prompt string, out chan<- rag.StreamEvent) error {
+func (c *Client) Stream(ctx context.Context, prompt rag.Prompt, out chan<- rag.StreamEvent) error {
 	maxTok := c.MaxTokens
 	if maxTok == 0 {
 		maxTok = 1024
 	}
 	body, _ := json.Marshal(messagesReq{
 		Model: c.Model, MaxTokens: maxTok, Stream: true,
-		Messages: []message{{Role: "user", Content: prompt}},
+		System:   prompt.System,
+		Messages: messages(prompt),
 	})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	req.Header.Set("x-api-key", c.APIKey)

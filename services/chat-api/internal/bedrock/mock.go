@@ -12,8 +12,8 @@ import (
 // exercise the full pipeline without spending Bedrock tokens.
 type MockLLM struct{}
 
-func (MockLLM) Stream(ctx context.Context, prompt string, out chan<- rag.StreamEvent) error {
-	answer := deriveAnswer(prompt)
+func (MockLLM) Stream(ctx context.Context, prompt rag.Prompt, out chan<- rag.StreamEvent) error {
+	answer := deriveAnswer(prompt.User)
 	for _, tok := range strings.SplitAfter(answer, " ") {
 		select {
 		case <-ctx.Done():
@@ -72,4 +72,3 @@ func itoa(i int) string {
 	}
 	return string(b[pos:])
 }
-
