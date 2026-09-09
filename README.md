@@ -11,25 +11,88 @@ grounded in markdown documentation stored in a GitLab repo and/or project wiki.
 
 ## Local dev
 
+### Prerequisites
+
+- **Docker Desktop** — runs OpenSearch, LocalStack (S3), Postgres, and the
+  embedding Ollama.
+- **Go** and **Node** — chat-api and the indexer run on the host, not in
+  containers.
+- **Ollama.app** (optional) — only if you want reranking or follow-up
+  rewriting, which need `gpt-oss:20b`. See [Two Ollamas](#two-ollamas).
+
+### Starting from scratch
+
+Every step, in order, from a machine that has just rebooted:
+
 ```sh
-# start OpenSearch + LocalStack (S3) + Postgres + Ollama
+# 1. config: copy the template and add your Anthropic key
+cp .env.example .env   # skip if you already have a .env
+
+# 2. start Docker Desktop itself, then wait for the daemon to accept
+#    connections -- `make dev-up` fails outright if it is not up yet
+open -a Docker
+until docker info >/dev/null 2>&1; do sleep 1; done
+
+# 3. OpenSearch + LocalStack (S3) + Postgres + Ollama
 make dev-up
 
-# seed sample docs and index them
-# (depends on embed-pull, which downloads the embedding model on first run)
+# 4. seed sample docs and index them
+#    (depends on embed-pull, which downloads ~270MB on first run)
 make seed
 
-# run chat-api with mock Bedrock
+# 5. run chat-api
 make run-api
 
-# in another shell
+# 6. in another shell
 make run-ui
 # open http://localhost:5173
 ```
 
-Set `KA_LLM_MODE=mock` to skip Bedrock calls; the API returns canned answers
-using retrieved chunks so you can iterate on retrieval without spending
-tokens.
+Steps 1 and 4 are one-time-ish: after a reboot with the Docker volumes
+intact, `make dev-up && make run-api` plus `make run-ui` is enough. `make
+dev-down` passes `-v` and destroys the volumes, so the next start needs the
+full sequence again.
+
+Set `KA_LLM_MODE=mock` to skip Bedrock/Anthropic calls; the API returns
+canned answers using retrieved chunks so you can iterate on retrieval
+without spending tokens.
+
+### Two Ollamas
+
+Local dev can involve **two separate Ollama servers**, and they hold
+different models:
+
+| Port | Server | Holds | Used for | Config |
+|---|---|---|---|---|
+| `11435` | docker-compose `ollama` | `nomic-embed-text` | embeddings | `KA_OLLAMA_URL` |
+| `11434` | native Ollama.app | `gpt-oss:20b` | rerank, rewrite | `KA_RERANK_URL`, `KA_REWRITE_URL` |
+
+The container is on 11435 deliberately. If both listen on 11434 there is
+**no bind error** — the app binds IPv4 `127.0.0.1:11434` and a Docker port
+binding takes IPv6 `[::]:11434`, so they coexist — but `localhost` resolves
+IPv4-first, so every embed call silently reaches the app, which does not
+have `nomic-embed-text`:
+
+```
+retrieve: embed: ollama embed: http://localhost:11434/api/embed returned 404:
+{"error":"model \"nomic-embed-text\" not found, try pulling it first"}
+```
+
+That error means requests are going to the **wrong Ollama**, not that the
+pull failed — `make embed-pull` puts the model in the container, where
+`ollama list` on the host cannot see it (the host CLI talks to the app).
+To tell the two apart:
+
+```sh
+lsof -nP -iTCP:11434 -sTCP:LISTEN        # two LISTEN lines = the collision
+docker exec docker-ollama-1 ollama list  # what the container has
+ollama list                              # what the app has
+```
+
+If you do not need reranking, quit Ollama.app and set `KA_RERANK_MODE=off`
+and `KA_REWRITE_MODE=off`; only the container is needed. Note that
+Ollama.app installs itself as a login item and restarts with your Mac, so
+it can reappear after a reboot even if you quit it.
 
 ## Embeddings
 
@@ -42,7 +105,7 @@ pull re-downloads ~270MB.
 | Variable | Default | Meaning |
 |---|---|---|
 | `KA_EMBED_MODE` | `ollama` | `ollama` or `mock` |
-| `KA_OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
+| `KA_OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint. The compiled-in default predates the port split; set it to `http://localhost:11435` (as `.env.example` does) to reach the compose container. See [Two Ollamas](#two-ollamas). |
 | `KA_EMBED_MODEL` | `nomic-embed-text` | Model name |
 | `KA_EMBED_DIM` | `768` | Vector width; must match the model |
 

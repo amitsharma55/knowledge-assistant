@@ -22,9 +22,14 @@ embed-pull:
 reset-index:
 	@curl -s -X DELETE "$${KA_OPENSEARCH_URL:-http://localhost:9200}/$${KA_OPENSEARCH_INDEX:-kb-chunks}" >/dev/null || true
 
+# Loads .env the same way run-api does. Without it the indexer falls back to
+# the compiled-in KA_OLLAMA_URL default (localhost:11434) and embeds against
+# whatever answers there -- a native Ollama.app, if one is running, which
+# 404s on nomic-embed-text.
 seed: embed-pull reset-index
-	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/coupa -team coupa
-	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/star  -team star
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/coupa -team coupa && \
+	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/star  -team star && \
 	go run ./services/ingestion/cmd/indexer -source fixtures -fixtures fixtures/hr    -team hr
 	@# Newly indexed docs are not searchable until OpenSearch refreshes
 	@# (1s by default). Without this, a query issued immediately after
@@ -38,6 +43,7 @@ run-api:
 	go run ./services/chat-api/cmd/server
 
 run-ingest:
+	@set -a; [ -f .env ] && . ./.env; set +a; \
 	go run ./services/ingestion/cmd/indexer
 
 run-ui:

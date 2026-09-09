@@ -33,12 +33,20 @@ services:
   # the indexer both embed through this. The named volume holds the pulled
   # model across restarts. Note `make dev-down` passes -v, which removes it,
   # so the next `make embed-pull` re-downloads ~270MB.
+  #
+  # Published on 11435, not 11434, to stay clear of a native Ollama.app.
+  # That app binds 127.0.0.1:11434 (IPv4) while this container's port
+  # binding takes [::]:11434 (IPv6), so both can hold "port 11434" at once
+  # with no bind error -- and `localhost` resolves IPv4-first, silently
+  # routing embed calls to the app, which 404s on nomic-embed-text.
+  # Distinct ports make the two servers unambiguous. Set KA_OLLAMA_URL to
+  # http://localhost:11435 to reach this one.
   ollama:
     image: ollama/ollama:latest
     volumes:
       - ollama-models:/root/.ollama
     ports:
-      - "11434:11434"
+      - "11435:11434"
 
 volumes:
   ollama-models:
