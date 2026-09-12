@@ -45,7 +45,7 @@ func TestIngestEmbedsTitleAndSection(t *testing.T) {
 		Markdown: "# AVR SOAP Service\n\nIntro text.\n\n## Operations\n\nThe middleware uses four of them.\n",
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte(`{"errors":false,"items":[]}`))
+		_, _ = w.Write([]byte(`{"errors":false,"items":[]}`))
 	}))
 	defer srv.Close()
 	idx := &index.Indexer{BaseURL: srv.URL, Index: "kb-chunks", HTTP: srv.Client()}

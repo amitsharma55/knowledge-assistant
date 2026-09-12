@@ -23,7 +23,7 @@ func TestOllamaEmbedSendsModelAndInput(t *testing.T) {
 			t.Errorf("request body is not the expected JSON: %v", err)
 		}
 		gotModel, gotInput = req.Model, req.Input
-		w.Write([]byte(`{"embeddings":[[0.1,0.2,0.3]]}`))
+		_, _ = w.Write([]byte(`{"embeddings":[[0.1,0.2,0.3]]}`))
 	}))
 	defer srv.Close()
 
@@ -49,7 +49,7 @@ func TestOllamaEmbedSendsModelAndInput(t *testing.T) {
 func TestOllamaEmbedErrorsOnNon200(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"error":"model 'nope' not found"}`))
+		_, _ = w.Write([]byte(`{"error":"model 'nope' not found"}`))
 	}))
 	defer srv.Close()
 
@@ -70,7 +70,7 @@ func TestOllamaEmbedErrorsOnNon200(t *testing.T) {
 // so the embedder catches it at the source.
 func TestOllamaEmbedErrorsOnDimensionMismatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte(`{"embeddings":[[0.1,0.2,0.3]]}`))
+		_, _ = w.Write([]byte(`{"embeddings":[[0.1,0.2,0.3]]}`))
 	}))
 	defer srv.Close()
 
@@ -88,7 +88,7 @@ func TestOllamaEmbedErrorsOnDimensionMismatch(t *testing.T) {
 
 func TestOllamaEmbedErrorsOnEmptyResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte(`{"embeddings":[]}`))
+		_, _ = w.Write([]byte(`{"embeddings":[]}`))
 	}))
 	defer srv.Close()
 

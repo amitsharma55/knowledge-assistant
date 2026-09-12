@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/example/knowledge-assistant/services/chat-api/internal/opensearch"
 	"github.com/example/knowledge-assistant/internal/rag"
+	"github.com/example/knowledge-assistant/services/chat-api/internal/opensearch"
 )
 
 type entry struct {

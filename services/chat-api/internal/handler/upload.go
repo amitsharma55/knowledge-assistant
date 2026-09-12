@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/example/knowledge-assistant/internal/extract"
-	"github.com/example/knowledge-assistant/internal/ingest"
 	"github.com/example/knowledge-assistant/internal/index"
+	"github.com/example/knowledge-assistant/internal/ingest"
 	"github.com/example/knowledge-assistant/internal/rag"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/middleware"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/session"
@@ -21,9 +21,9 @@ import (
 const maxUploadSize = 25 << 20 // 25 MB
 
 type UploadHandler struct {
-	Sessions *session.Store    // for session-scoped uploads
-	Indexer  *index.Indexer    // for persist=true (nil if OpenSearch isn't configured)
-	Embedder rag.Embedder      // used for the persistent path
+	Sessions *session.Store // for session-scoped uploads
+	Indexer  *index.Indexer // for persist=true (nil if OpenSearch isn't configured)
+	Embedder rag.Embedder   // used for the persistent path
 	Log      *slog.Logger
 }
 

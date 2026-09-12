@@ -152,7 +152,7 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID, chimw.RealIP, chimw.Recoverer, chimw.Timeout(180*time.Second))
-	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
+	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 
 	sessions := session.NewStore(embedder, 30*time.Minute)
 

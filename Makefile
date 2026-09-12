@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down embed-pull reset-index seed run-api run-ingest run-ui test build
+.PHONY: dev-up dev-down embed-pull reset-index seed run-api run-ingest run-ui test lint tf-check build
 
 dev-up:
 	docker compose -f deploy/docker/docker-compose.yml up -d
@@ -51,6 +51,12 @@ run-ui:
 
 test:
 	go test ./...
+
+lint:
+	golangci-lint run ./...
+
+tf-check:
+	terraform/check.sh
 
 build:
 	CGO_ENABLED=0 go build -o bin/chat-api ./services/chat-api/cmd/server

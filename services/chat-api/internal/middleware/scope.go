@@ -108,4 +108,3 @@ func UserFromContext(ctx context.Context) string {
 	}
 	return ""
 }
-
