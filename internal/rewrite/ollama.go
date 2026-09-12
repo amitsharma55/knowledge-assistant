@@ -32,21 +32,6 @@ type Ollama struct {
 	MaxTurns int
 }
 
-const systemPrompt = `You are in a conversation with a user, answering questions about the integrations documented in a knowledge base. You are about to look up information there to answer them.
-
-Write the query you will search with.
-
-It must do two jobs:
-- Resolve the question against the conversation. A latest message may be a fragment or an answer to something you just asked; replace pronouns and references with what they refer to, and carry the subject forward.
-- Leave it alone otherwise. Do not re-word a question that already stands on its own; return it unchanged.
-
-Rules:
-- Reply with the search query only. No preamble, no explanation, no quotes.
-- Keep every proper noun the user used, and add the one the conversation supplies.
-- Never narrow past what was asked. A question about several things stays about all of them.
-
-Rewording a question that needs no rewording is not free. Compressing "What is the submission deadline for the Louisiana data call?" into bare terms costs the phrasing that separates it from the near-identical Texas document, and the search then straddles both.`
-
 const orderSchemaKey = "query"
 
 var querySchema = map[string]any{
@@ -74,26 +59,11 @@ func (o Ollama) maxTurns() int {
 // this client's: it depends on whether the original question is being
 // searched alongside. So no history is a normal input here, not a shortcut.
 func (o Ollama) Rewrite(ctx context.Context, question string, history []rag.Turn) (string, error) {
-	if n := o.maxTurns(); len(history) > n {
-		history = history[len(history)-n:]
-	}
-
-	var u strings.Builder
-	if len(history) == 0 {
-		u.WriteString("There is no conversation yet; this is the user's first message.\n\n")
-	} else {
-		u.WriteString("Conversation so far:\n\n")
-		for _, t := range history {
-			fmt.Fprintf(&u, "%s: %s\n\n", t.Role, truncate(t.Content, 1500))
-		}
-	}
-	fmt.Fprintf(&u, "Latest user message:\n\n%s\n\nWrite the knowledge base search query.", question)
-
 	payload, err := json.Marshal(map[string]any{
 		"model": o.Model,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": u.String()},
+			{"role": "user", "content": buildRewritePrompt(question, history, o.maxTurns())},
 		},
 		"stream": false,
 		"format": querySchema,
@@ -136,16 +106,7 @@ func (o Ollama) Rewrite(ctx context.Context, question string, history []rag.Turn
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return "", fmt.Errorf("rewrite: decode response: %w", err)
 	}
-	var parsed struct {
-		Query string `json:"query"`
-	}
-	if err := json.Unmarshal([]byte(out.Message.Content), &parsed); err != nil {
-		return "", fmt.Errorf("rewrite: decode query %q: %w", truncate(out.Message.Content, 200), err)
-	}
-	if strings.TrimSpace(parsed.Query) == "" {
-		return "", fmt.Errorf("rewrite: model returned an empty query")
-	}
-	return strings.TrimSpace(parsed.Query), nil
+	return parseQuery(out.Message.Content)
 }
 
 func truncate(s string, n int) string {
