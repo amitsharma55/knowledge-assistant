@@ -1,28 +1,34 @@
 import { useRef, useState } from 'react';
+import { PaperclipIcon, SendIcon, StopIcon, CloseIcon } from '../icons.jsx';
 
-export default function Composer({ onSend, onUpload, busy, uploads, onRemoveUpload }) {
+export default function Composer({ onSend, onUpload, onStop, streaming, uploading, disabled, uploads, onRemoveUpload }) {
   const [text, setText] = useState('');
   const [persist, setPersist] = useState(false);
   const fileRef = useRef();
 
   function submit() {
     const t = text.trim();
-    if (!t || busy) return;
+    if (!t || streaming || disabled) return;
     setText('');
     onSend(t);
   }
 
   return (
-    <div className="border-t border-slate-200 bg-white p-3">
+    <div className="border-t border-rule bg-surface p-3">
       {uploads.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
+        <ul className="flex flex-wrap gap-2 mb-2">
           {uploads.map(u => (
-            <span key={u.uploadId} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-50 text-blue-800 border border-blue-200">
+            <li key={u.uploadId} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-info-bg text-info border border-info-bg">
               {u.filename} · {u.chunks} chunks{u.persisted ? ' · saved' : ''}
-              <button onClick={() => onRemoveUpload(u.uploadId)} className="text-blue-500 hover:text-blue-700">×</button>
-            </span>
+              <button
+                onClick={() => onRemoveUpload(u.uploadId)}
+                aria-label={`Remove ${u.filename}`}
+                className="text-info hover:text-info p-0.5">
+                <CloseIcon className="w-3 h-3" />
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
       <div className="flex items-end gap-2">
         <div className="flex flex-col gap-1 items-center">
@@ -38,13 +44,15 @@ export default function Composer({ onSend, onUpload, busy, uploads, onRemoveUplo
             }}
           />
           <button
-            title="Attach a document"
+            aria-label="Attach a document"
             onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="w-9 h-9 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
-            📎
+            disabled={uploading || disabled}
+            className="w-9 h-9 flex items-center justify-center rounded-md border border-rule-2 text-ink-2 hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            {uploading
+              ? <span className="w-3.5 h-3.5 rounded-full border-2 border-rule-2 border-t-ink-3 animate-spin" />
+              : <PaperclipIcon />}
           </button>
-          <label className="flex items-center gap-1 text-[10px] text-slate-500 whitespace-nowrap">
+          <label className="flex items-center gap-1 text-[11px] text-ink-2 whitespace-nowrap">
             <input
               type="checkbox"
               checked={persist}
@@ -61,16 +69,30 @@ export default function Composer({ onSend, onUpload, busy, uploads, onRemoveUplo
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
           }}
           rows={2}
-          disabled={busy}
+          /* Deliberately still editable while streaming, so the next question
+             can be drafted while the current answer arrives. Only a missing
+             team disables it. */
+          disabled={disabled}
+          aria-label="Ask a question"
           placeholder="Ask about an integration, its fields, its jobs…"
-          className="flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 resize-none rounded-md border border-rule-2 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-edge disabled:bg-paper"
         />
-        <button
-          onClick={submit}
-          disabled={busy || !text.trim()}
-          className="h-9 px-4 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed">
-          Send
-        </button>
+        {streaming ? (
+          <button
+            onClick={onStop}
+            className="h-9 px-4 inline-flex items-center gap-1.5 rounded-md border border-rule-2 text-ink-2 text-sm hover:bg-surface-2">
+            <StopIcon className="w-3 h-3" />
+            Stop
+          </button>
+        ) : (
+          <button
+            onClick={submit}
+            disabled={disabled || !text.trim()}
+            className="h-9 px-4 inline-flex items-center gap-1.5 rounded-md bg-ink text-white text-sm hover:bg-ink/85 disabled:bg-rule-2 disabled:cursor-not-allowed">
+            <SendIcon className="w-3.5 h-3.5" />
+            Send
+          </button>
+        )}
       </div>
     </div>
   );

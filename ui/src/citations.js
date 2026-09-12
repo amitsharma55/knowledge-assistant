@@ -27,3 +27,17 @@ export function groupCitations(citations = []) {
   });
   return [...docs.values()].map((d) => ({ ...d, sections: [...d.sections.values()] }));
 }
+
+// citationTargets maps a [n] marker to the id of the chunk it refers to.
+//
+// The model's markers are 1-based positions into the citation list it was
+// given, and each of those entries is a chunk carrying its own id -- the same
+// id the context panel keys its rows on. That shared id is what lets a marker
+// in the answer and a passage in the rail point at each other.
+export function citationTargets(citations = []) {
+  const byNumber = new Map();
+  citations.forEach((c, i) => {
+    if (c?.id) byNumber.set(i + 1, c.id);
+  });
+  return byNumber;
+}

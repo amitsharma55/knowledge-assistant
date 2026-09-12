@@ -35,29 +35,38 @@ export async function uploadFile(file, sessionId, persist, team) {
 
 // streamChat POSTs a message and yields SSE events one at a time.
 // Consumer handles { type: 'chat'|'retrieval'|'citation'|'token'|'suggestion'|'done'|'error', data }.
-export async function* streamChat({ chatId, sessionId, message, team }) {
+// `signal` aborts the request; the caller is expected to swallow the resulting
+// AbortError, since a stopped answer is a normal outcome rather than a failure.
+export async function* streamChat({ chatId, sessionId, message, team, signal }) {
   const res = await fetch('/v1/chat/messages', {
     method: 'POST',
     headers: { ...headers(team), 'Content-Type': 'application/json' },
     body: JSON.stringify({ chatId, sessionId, message }),
+    signal,
   });
   if (!res.ok || !res.body) throw new Error('stream failed');
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) return;
-    buf += dec.decode(value, { stream: true });
-    const frames = buf.split('\n\n');
-    buf = frames.pop() || '';
-    for (const frame of frames) {
-      const type = (frame.split('\n').find(l => l.startsWith('event: ')) || '').slice(7);
-      const data = (frame.split('\n').find(l => l.startsWith('data: ')) || '').slice(6);
-      if (!type || !data) continue;
-      let payload;
-      try { payload = JSON.parse(data); } catch { continue; }
-      yield { type, data: payload };
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      buf += dec.decode(value, { stream: true });
+      const frames = buf.split('\n\n');
+      buf = frames.pop() || '';
+      for (const frame of frames) {
+        const type = (frame.split('\n').find(l => l.startsWith('event: ')) || '').slice(7);
+        const data = (frame.split('\n').find(l => l.startsWith('data: ')) || '').slice(6);
+        if (!type || !data) continue;
+        let payload;
+        try { payload = JSON.parse(data); } catch { continue; }
+        yield { type, data: payload };
+      }
     }
+  } finally {
+    // Releasing the lock lets an aborted body tear down instead of leaking the
+    // reader when the consumer stops iterating early.
+    reader.cancel().catch(() => {});
   }
 }

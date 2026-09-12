@@ -1,4 +1,91 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* One token layer, replacing the ad-hoc slate/blue/amber/emerald mix and the
+   scattered text-[10px]/text-[11px] sizes. Plex is loaded in index.html; every
+   family falls back to a real system stack if the font host is unreachable,
+   which matters on an internal network. */
+@theme {
+  --color-paper: #EDEFF1;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F6F7F9;
+  --color-ink: #12161C;
+  --color-ink-2: #454C57;
+  --color-ink-3: #6B7482;
+  --color-rule: #DDE1E6;
+  --color-rule-2: #C7CDD4;
+  --color-accent: #8A5D0F;
+  --color-accent-tint: #FBECC8;
+  --color-accent-edge: #D9A93F;
+  --color-good: #1B6B4F;
+  --color-good-bg: #E2F0EA;
+  --color-info: #23558F;
+  --color-info-bg: #E3ECF7;
+  --color-mute: #697280;
+  --color-mute-bg: #E4E7EA;
+
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 
 html, body, #root { height: 100%; }
-body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Several interactive elements here are custom (ladder rows, the rail strip)
+   and would inherit nothing once Preflight removes the UA outline. */
+:where(a, button, select, textarea, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent-edge);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* The answer is set as a document, so prose carries serif body text with sans
+   headings and mono code -- the same three roles as the rest of the app. */
+.answer-prose {
+  --tw-prose-body: var(--color-ink);
+  --tw-prose-headings: var(--color-ink);
+  --tw-prose-bold: var(--color-ink);
+  --tw-prose-links: var(--color-ink);
+  --tw-prose-bullets: var(--color-rule-2);
+  --tw-prose-quotes: var(--color-ink-2);
+  --tw-prose-code: var(--color-ink);
+  --tw-prose-th-borders: var(--color-rule-2);
+  --tw-prose-td-borders: var(--color-rule);
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 1.65;
+}
+.answer-prose :is(h1, h2, h3, h4) {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-ink-2);
+  margin-top: 1.8em;
+  margin-bottom: 0.7em;
+}
+.answer-prose :is(code, pre) { font-family: var(--font-mono); }
+.answer-prose :not(pre) > code {
+  font-size: 0.85em;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-rule);
+  border-radius: 3px;
+  padding: 0.08em 0.32em;
+}
+.answer-prose :not(pre) > code::before,
+.answer-prose :not(pre) > code::after { content: none; }
+.answer-prose pre { overflow-x: auto; }
+.answer-prose table { display: block; overflow-x: auto; font-size: 0.85em; }
