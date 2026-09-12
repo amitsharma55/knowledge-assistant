@@ -104,7 +104,7 @@ pull re-downloads ~270MB.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `KA_EMBED_MODE` | `ollama` | `ollama` or `mock` |
+| `KA_EMBED_MODE` | `ollama` | `ollama`, `bedrock`, or `mock` |
 | `KA_OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint. The compiled-in default predates the port split; set it to `http://localhost:11435` (as `.env.example` does) to reach the compose container. See [Two Ollamas](#two-ollamas). |
 | `KA_EMBED_MODEL` | `nomic-embed-text` | Model name |
 | `KA_EMBED_DIM` | `768` | Vector width; must match the model |
@@ -200,6 +200,22 @@ fixtures mode and OpenSearch, but not between embedding models: each model
 spreads similarities differently, so a floor tuned on `nomic-embed-text`
 must be re-derived with `check_corpus.py --scores` after switching to
 another embedder such as Titan.
+
+### Recalibrating for a new embedder (owner-run, needs AWS)
+
+Titan v2 (1024-dim, normalized) has a different cosine distribution than
+`nomic-embed-text` (768-dim), so `KA_RELEVANCE_FLOOR` must be re-derived and
+the index reseeded. Neither CI nor an offline session can do this — it needs
+live Bedrock credentials.
+
+1. Export the Bedrock embed settings and AWS credentials:
+   `KA_EMBED_MODE=bedrock KA_EMBED_MODEL=amazon.titan-embed-text-v2:0 KA_EMBED_DIM=1024 AWS_REGION=us-east-1`.
+2. `make seed` — drops the 768-dim index first, so the width change is clean.
+3. `python3 scripts/check_corpus.py --scores` — read the lowest answerable
+   top score and the highest not-answerable-here top score.
+4. Set `KA_RELEVANCE_FLOOR` to the midpoint of that gap (the same method the
+   `0.81` default used for `nomic-embed-text`).
+5. `python3 scripts/check_corpus.py --validate` to confirm the split.
 
 ### Reindexing after this change
 

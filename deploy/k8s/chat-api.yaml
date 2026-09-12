@@ -11,16 +11,26 @@ spec:
     metadata:
       labels: { app: chat-api }
     spec:
-      serviceAccountName: chat-api  # IRSA: bedrock + opensearch permissions
+      serviceAccountName: chat-api  # EKS Pod Identity: bedrock + secrets + opensearch
       containers:
         - name: chat-api
           image: <account>.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/chat-api:latest
           ports: [{ containerPort: 8080 }]
+          # The answer LLM is the direct Anthropic API (the pod may read the
+          # Claude key from Secrets Manager, not invoke Claude on Bedrock);
+          # embeddings and rerank/rewrite go through Bedrock.
           env:
-            - { name: KA_LLM_MODE, value: bedrock }
+            - { name: KA_LLM_MODE, value: anthropic }
+            - { name: AWS_REGION, value: us-east-1 }
+            - { name: KA_ANTHROPIC_SECRET_ID, value: ka/anthropic-api-key }
+            - { name: KA_EMBED_MODE, value: bedrock }
+            - { name: KA_EMBED_MODEL, value: "amazon.titan-embed-text-v2:0" }
+            - { name: KA_EMBED_DIM, value: "1024" }
+            - { name: KA_RERANK_MODE, value: bedrock }
+            - { name: KA_RERANK_MODEL, value: "openai.gpt-oss-20b-1:0" }
+            - { name: KA_REWRITE_MODE, value: bedrock }
+            - { name: KA_REWRITE_MODEL, value: "openai.gpt-oss-20b-1:0" }
             - { name: KA_OPENSEARCH_URL, valueFrom: { secretKeyRef: { name: ka-config, key: opensearch_url } } }
-            - { name: KA_BEDROCK_MODEL, value: "anthropic.claude-sonnet-4-6-v1:0" }
-            - { name: KA_EMBED_MODEL,   value: "amazon.titan-embed-text-v2:0" }
           resources:
             requests: { cpu: "250m", memory: "256Mi" }
             limits:   { cpu: "1",    memory: "512Mi" }
