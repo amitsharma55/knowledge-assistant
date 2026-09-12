@@ -26,13 +26,6 @@ type Ollama struct {
 	HTTP    *http.Client
 }
 
-const systemPrompt = `You are a document re-ranker.
-You are given a question and a numbered list of text chunks retrieved from a knowledge base.
-The chunks are in the order retrieval returned them, which is approximately by relevance; you can usually improve on it.
-Rank every chunk by how well it answers the question, most relevant first.
-Judge whether a chunk contains the specific facts the question asks for, not merely whether it covers the same topic.
-Reply only with the ranked chunk ids. Include every id you were given, exactly once.`
-
 // orderSchema constrains the reply to {"order": [ints]}.
 var orderSchema = map[string]any{
 	"type": "object",
@@ -61,18 +54,11 @@ func (o Ollama) Rerank(ctx context.Context, query string, chunks []rag.Chunk) ([
 		return chunks, nil
 	}
 
-	var u strings.Builder
-	fmt.Fprintf(&u, "Question:\n\n%s\n\nChunks:\n\n", query)
-	for i, c := range chunks {
-		fmt.Fprintf(&u, "# CHUNK ID: %d\nsource: %s — %s\n\n%s\n\n", i+1, c.PageTitle, c.SectionPath, c.Text)
-	}
-	fmt.Fprintf(&u, "Rank all %d chunk ids by relevance to the question, most relevant first.", len(chunks))
-
 	payload, err := json.Marshal(map[string]any{
 		"model": o.Model,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": u.String()},
+			{"role": "user", "content": buildRerankPrompt(query, chunks)},
 		},
 		"stream": false,
 		"format": orderSchema,
@@ -120,16 +106,11 @@ func (o Ollama) Rerank(ctx context.Context, query string, chunks []rag.Chunk) ([
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, fmt.Errorf("rerank: decode response: %w", err)
 	}
-	var ranking struct {
-		Order []int `json:"order"`
+	order, err := parseOrder(out.Message.Content)
+	if err != nil {
+		return nil, err
 	}
-	if err := json.Unmarshal([]byte(out.Message.Content), &ranking); err != nil {
-		return nil, fmt.Errorf("rerank: decode ranking %q: %w", truncate(out.Message.Content, 200), err)
-	}
-	if len(ranking.Order) == 0 {
-		return nil, fmt.Errorf("rerank: model returned an empty ranking")
-	}
-	return Reorder(chunks, ranking.Order), nil
+	return Reorder(chunks, order), nil
 }
 
 func truncate(s string, n int) string {
