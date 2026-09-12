@@ -1,0 +1,19 @@
+terraform {
+  required_version = "~> 1.16"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.64"
+    }
+  }
+}
+
+provider "aws" {
+  region              = var.aws_region
+  allowed_account_ids = var.allowed_account_ids
+
+  default_tags {
+    tags = var.tags
+  }
+}

@@ -217,5 +217,83 @@ make seed
 
 ## Deploy
 
-CI builds images to ECR on merge to `main` and rolls out via Helm; see
-[`deploy/k8s/chart/`](deploy/k8s/chart/).
+Everything in AWS is managed with Terraform under `terraform/`, run from your
+laptop; GitHub Actions has no AWS access. Design:
+`docs/superpowers/specs/2026-09-10-aws-foundation-design.md`.
+
+- `terraform/bootstrap` — the S3 bucket that holds Terraform state (its own
+  state is local).
+- `terraform/foundation` — everything permanent: network, docs bucket, ECR, the
+  Claude key secret, IAM roles, budget.
+- `terraform/daily` — the environment created each morning and destroyed each
+  evening (not built yet).
+
+All configuration is in each stack's `terraform.tfvars` (committed) and
+`private.auto.tfvars` (gitignored: account ID, alert email). Change values
+there, never in `.tf` files; `make tf-check` fails if a tfvars value appears in
+code. `make tf-check` runs every offline check and needs no AWS credentials.
+
+### Prerequisites
+
+```sh
+brew uninstall terraform && brew install tfenv
+tfenv install 1.5.7 && tfenv use 1.5.7   # the default outside this repo
+tfenv install                            # in the repo: reads .terraform-version
+```
+
+AWS CLI credentials for the account listed in `allowed_account_ids`.
+
+### One-time setup
+
+```sh
+cd terraform/bootstrap
+cp private.auto.tfvars.example private.auto.tfvars      # fill in
+terraform init && terraform apply
+terraform output -raw state_bucket_name
+
+cd ../foundation
+cp private.auto.tfvars.example private.auto.tfvars      # fill in
+cp backend.hcl.example backend.hcl                      # bucket from above
+terraform init -backend-config=backend.hcl
+terraform plan -out=foundation.tfplan                   # review: creates only
+terraform apply foundation.tfplan
+```
+
+If `apply` fails on `aws_iam_service_linked_role.opensearch` with
+`InvalidInput`/`EntityAlreadyExists`, the account already has the OpenSearch
+service-linked role (any prior OpenSearch/Elasticsearch VPC domain creates it).
+Import it and re-apply:
+
+```sh
+terraform import aws_iam_service_linked_role.opensearch \
+  "$(aws iam get-role --role-name AWSServiceRoleForAmazonOpenSearchService \
+       --query 'Role.Arn' --output text)"
+```
+
+Set the Claude API key once. It never reaches Terraform state, git or your
+shell history:
+
+```sh
+read -rs KEY && aws secretsmanager put-secret-value \
+  --secret-id "$(terraform output -raw anthropic_secret_name)" \
+  --secret-string "$KEY"; unset KEY
+```
+
+Then check the result, and again after any IAM change:
+
+```sh
+./verify.sh
+```
+
+### Removing the foundation
+
+`prevent_destroy` blocks destroying the state bucket, the docs bucket and the
+secret. To remove everything deliberately:
+
+1. Set `prevent_destroy = false` in `terraform/modules/private-bucket/main.tf`
+   and `terraform/foundation/secrets.tf` (a local change; do not commit it).
+2. Empty the docs bucket, including all object versions (S3 console: Empty).
+3. Delete the images in the ECR repositories.
+4. `terraform -chdir=terraform/foundation destroy`.
+5. Empty the state bucket, including all versions, then
+   `terraform -chdir=terraform/bootstrap destroy`.

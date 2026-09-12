@@ -1,0 +1,6 @@
+# Copy to private.auto.tfvars (gitignored) and fill in. Never commit the copy:
+# the repository is public.
+#   aws sts get-caller-identity --query Account --output text
+allowed_account_ids = ["000000000000"]
+
+alert_emails = ["you@example.com"]

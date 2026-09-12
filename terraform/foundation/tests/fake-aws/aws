@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# A stand-in for the AWS CLI, just big enough for verify.sh. Policy simulator
+# decisions come from $FAKE_AWS_RULES: one "role action resource decision"
+# line per allowed call; anything else is implicitDeny, as in AWS.
+set -euo pipefail
+
+arg() {
+  local flag=$1
+  shift
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "$flag" ]; then
+      echo "$2"
+      return
+    fi
+    shift
+  done
+}
+
+case "${1:-} ${2:-}" in
+  "iam simulate-principal-policy")
+    role=$(arg --policy-source-arn "$@")
+    action=$(arg --action-names "$@")
+    resource=$(arg --resource-arns "$@")
+    decision=$(awk -v r="$role" -v a="$action" -v x="$resource" \
+      '$1 == r && $2 == a && $3 == x { print $4; exit }' "$FAKE_AWS_RULES")
+    echo "${decision:-implicitDeny}"
+    ;;
+  "secretsmanager describe-secret")
+    if [ "${FAKE_SECRET_EMPTY:-0}" = 1 ]; then echo 'null'; else echo '{"v1":["AWSCURRENT"]}'; fi
+    ;;
+  "budgets describe-budget")
+    printf '{"Budget":{"BudgetLimit":{"Amount":"%s","Unit":"USD"}}}\n' "${FAKE_BUDGET_LIMIT:-50.0}"
+    ;;
+  "budgets describe-notifications-for-budget")
+    jq -n --argjson n "${FAKE_NOTIFICATIONS:-4}" '{Notifications: [range($n) | {NotificationType: "ACTUAL"}]}'
+    ;;
+  "resourcegroupstaggingapi get-resources")
+    echo "${FAKE_TAGGED:-12}"
+    ;;
+  *)
+    echo "fake aws: unsupported call: $*" >&2
+    exit 2
+    ;;
+esac
