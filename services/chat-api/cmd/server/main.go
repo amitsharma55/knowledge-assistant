@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/example/knowledge-assistant/internal/awsx"
 	"github.com/example/knowledge-assistant/internal/chunker"
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
@@ -111,10 +112,18 @@ func main() {
 		}
 		log.Info("using reranker", "mode", "ollama", "model", cfg.RerankModel,
 			"url", cfg.RerankURL, "timeout", cfg.RerankTimeout)
+	case "bedrock":
+		client, err := awsx.BedrockRuntime(context.Background())
+		if err != nil {
+			log.Error("bedrock reranker", "err", err)
+			os.Exit(1)
+		}
+		orch.Reranker = rerank.NewBedrock(cfg.RerankModel, client)
+		log.Info("using reranker", "mode", "bedrock", "model", cfg.RerankModel)
 	case "", "off":
 		log.Info("reranker disabled; chunks stay in vector-search order")
 	default:
-		log.Error("unknown KA_RERANK_MODE; want \"ollama\" or \"off\"", "mode", cfg.RerankMode)
+		log.Error("unknown KA_RERANK_MODE; want \"ollama\", \"bedrock\" or \"off\"", "mode", cfg.RerankMode)
 		os.Exit(2)
 	}
 
