@@ -184,21 +184,22 @@ team once ingested.
 When a query scores below `KA_RELEVANCE_FLOOR` in the active team but
 would have scored above it in another team the caller belongs to, the
 `suggestion` SSE event offers to switch. This does **not** fire under the
-mock embedder (`KA_LLM_MODE=mock` / fixtures mode): mock embeddings carry
-no semantic signal, so nothing clears the floor in any team — measured
-scores land around 0.029 and -0.010 against the default floor of 0.25, in
-every team, for every query. Don't demo this feature expecting it to
-work without wiring up real embeddings (Bedrock Titan); it needs actual
-semantic similarity to have any chance of separating "no results here"
-from "results next door."
+mock embedder (`KA_EMBED_MODE=mock`): mock embeddings carry no semantic
+signal, so nothing clears the floor in any team — every query scores
+around 0.5 on the `(1+cos)/2` scale (cosine ≈ 0), far below the default
+floor of `0.81`. Don't demo this feature without real embeddings (the
+default Ollama `nomic-embed-text`, or Titan); it needs actual semantic
+similarity to separate "no results here" from "results next door."
 
-### `KA_RELEVANCE_FLOOR` is backend-relative, not a portable constant
+### `KA_RELEVANCE_FLOOR` is embedder-relative, not a portable constant
 
-The in-memory fixtures store reports raw cosine similarity (range
-`[-1, 1]`), while OpenSearch's `cosinesimil` k-NN space reports a
-normalized `(1 + cos) / 2` (range `[0, 1]`). The same `KA_RELEVANCE_FLOOR`
-value therefore means something different in each mode, and must be
-retuned per deployment rather than copied between them.
+Both retrievers report the same scale: OpenSearch's `cosinesimil` k-NN
+space returns `(1 + cos) / 2` (range `[0, 1]`), and the in-memory fixtures
+store converts its cosine to match. A floor therefore carries over between
+fixtures mode and OpenSearch, but not between embedding models: each model
+spreads similarities differently, so a floor tuned on `nomic-embed-text`
+must be re-derived with `check_corpus.py --scores` after switching to
+another embedder such as Titan.
 
 ### Reindexing after this change
 
