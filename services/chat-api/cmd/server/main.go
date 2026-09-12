@@ -136,10 +136,18 @@ func main() {
 		}
 		log.Info("using query rewriter", "mode", "ollama", "model", cfg.RewriteModel,
 			"url", cfg.RewriteURL, "timeout", cfg.RewriteTimeout)
+	case "bedrock":
+		client, err := awsx.BedrockRuntime(context.Background())
+		if err != nil {
+			log.Error("bedrock rewriter", "err", err)
+			os.Exit(1)
+		}
+		orch.Rewriter = rewrite.NewBedrock(cfg.RewriteModel, 0, client)
+		log.Info("using query rewriter", "mode", "bedrock", "model", cfg.RewriteModel)
 	case "", "off":
 		log.Info("query rewriter disabled; follow-ups retrieve on their literal words")
 	default:
-		log.Error("unknown KA_REWRITE_MODE; want \"ollama\" or \"off\"", "mode", cfg.RewriteMode)
+		log.Error("unknown KA_REWRITE_MODE; want \"ollama\", \"bedrock\" or \"off\"", "mode", cfg.RewriteMode)
 		os.Exit(2)
 	}
 
