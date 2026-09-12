@@ -11,3 +11,12 @@ node_modules/
 coverage.out
 .vscode/
 .idea/
+.claude/settings.local.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+private.auto.tfvars
+backend.hcl
