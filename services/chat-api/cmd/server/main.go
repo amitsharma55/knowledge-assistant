@@ -27,6 +27,7 @@ import (
 	"github.com/example/knowledge-assistant/services/chat-api/internal/middleware"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/opensearch"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/repo"
+	"github.com/example/knowledge-assistant/services/chat-api/internal/secrets"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/session"
 
 	"github.com/go-chi/chi/v5"
@@ -69,11 +70,29 @@ func main() {
 		log.Info("using opensearch", "url", cfg.OpenSearchURL, "index", cfg.OpenSearchIdx)
 	}
 
+	// The Claude key may live in Secrets Manager rather than the environment:
+	// the EKS pod may read the secret but never carries the key on disk. Fail
+	// fast if it is configured but unreadable -- a broken key must stop the
+	// process, not silently degrade the answer path.
+	if cfg.AnthropicSecretID != "" {
+		sm, err := secrets.Client(context.Background())
+		if err != nil {
+			log.Error("secrets client", "err", err)
+			os.Exit(1)
+		}
+		key, err := secrets.FetchAPIKey(context.Background(), sm, cfg.AnthropicSecretID)
+		if err != nil {
+			log.Error("read anthropic key from secrets manager", "err", err)
+			os.Exit(1)
+		}
+		cfg.AnthropicAPIKey = key
+	}
+
 	var llm rag.LLM
 	switch cfg.LLMMode {
 	case "anthropic":
 		if cfg.AnthropicAPIKey == "" {
-			log.Error("KA_LLM_MODE=anthropic but ANTHROPIC_API_KEY is empty")
+			log.Error("KA_LLM_MODE=anthropic but no key; set ANTHROPIC_API_KEY or KA_ANTHROPIC_SECRET_ID")
 			os.Exit(1)
 		}
 		llm = &anthropic.Client{
@@ -83,9 +102,6 @@ func main() {
 			HTTP:      &http.Client{Timeout: 120 * time.Second},
 		}
 		log.Info("using anthropic", "model", cfg.AnthropicModel)
-	case "bedrock":
-		log.Warn("bedrock mode not wired yet; falling back to mock")
-		llm = bedrock.MockLLM{}
 	default:
 		llm = bedrock.MockLLM{}
 		log.Info("using mock LLM")

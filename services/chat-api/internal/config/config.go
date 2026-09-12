@@ -12,11 +12,13 @@ type Config struct {
 	OpenSearchURL   string
 	OpenSearchIdx   string
 	PostgresDSN     string // empty disables persistent chats
-	LLMMode         string // "mock" | "anthropic" | "bedrock"
+	LLMMode         string // "mock" | "anthropic"
 	AnthropicAPIKey string
 	AnthropicModel  string
-	BedrockRegion   string
-	BedrockModelID  string
+	// AnthropicSecretID, when set, names the Secrets Manager secret the Claude
+	// key is read from at startup instead of ANTHROPIC_API_KEY. This is how the
+	// EKS pod gets the key it may read but never has on disk.
+	AnthropicSecretID string
 	// Embedder settings are deliberately absent: they are read by
 	// embed.OptionsFromEnv so that chat-api and the indexer cannot be
 	// configured onto different models. See internal/embed/new.go.
@@ -70,22 +72,21 @@ type Config struct {
 
 func Load() Config {
 	return Config{
-		Addr:            envOr("KA_ADDR", ":8080"),
-		FixturesDir:     os.Getenv("KA_FIXTURES_DIR"),
-		OpenSearchURL:   envOr("KA_OPENSEARCH_URL", "http://localhost:9200"),
-		OpenSearchIdx:   envOr("KA_OPENSEARCH_INDEX", "kb-chunks"),
-		PostgresDSN:     envOr("KA_POSTGRES_DSN", "postgres://ka:ka@localhost:5432/ka?sslmode=disable"),
-		LLMMode:         envOr("KA_LLM_MODE", "mock"),
-		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
-		AnthropicModel:  envOr("KA_ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929"),
-		BedrockRegion:   envOr("AWS_REGION", "us-east-1"),
-		BedrockModelID:  envOr("KA_BEDROCK_MODEL", "anthropic.claude-sonnet-4-6-v1:0"),
-		TopK:            envInt("KA_TOP_K", 8),
-		RerankTopN:      envInt("KA_RERANK_TOP_N", 6),
-		MaxContext:      envInt("KA_MAX_CONTEXT", 10),
-		RerankMode:      envOr("KA_RERANK_MODE", "off"),
-		RerankURL:       envOr("KA_RERANK_URL", envOr("KA_OLLAMA_URL", "http://localhost:11434")),
-		RerankModel:     envOr("KA_RERANK_MODEL", "gpt-oss:20b"),
+		Addr:              envOr("KA_ADDR", ":8080"),
+		FixturesDir:       os.Getenv("KA_FIXTURES_DIR"),
+		OpenSearchURL:     envOr("KA_OPENSEARCH_URL", "http://localhost:9200"),
+		OpenSearchIdx:     envOr("KA_OPENSEARCH_INDEX", "kb-chunks"),
+		PostgresDSN:       envOr("KA_POSTGRES_DSN", "postgres://ka:ka@localhost:5432/ka?sslmode=disable"),
+		LLMMode:           envOr("KA_LLM_MODE", "mock"),
+		AnthropicAPIKey:   os.Getenv("ANTHROPIC_API_KEY"),
+		AnthropicModel:    envOr("KA_ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929"),
+		AnthropicSecretID: os.Getenv("KA_ANTHROPIC_SECRET_ID"),
+		TopK:              envInt("KA_TOP_K", 8),
+		RerankTopN:        envInt("KA_RERANK_TOP_N", 6),
+		MaxContext:        envInt("KA_MAX_CONTEXT", 10),
+		RerankMode:        envOr("KA_RERANK_MODE", "off"),
+		RerankURL:         envOr("KA_RERANK_URL", envOr("KA_OLLAMA_URL", "http://localhost:11434")),
+		RerankModel:       envOr("KA_RERANK_MODEL", "gpt-oss:20b"),
 		// A local 20b takes ~12s to rank 20 chunks from cold, and this sits
 		// in front of every answer. The ceiling is generous enough not to
 		// trip on a model load, and the orchestrator falls back to
