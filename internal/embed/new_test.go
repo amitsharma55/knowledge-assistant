@@ -86,3 +86,17 @@ func TestOptionsFromEnvOverrides(t *testing.T) {
 		t.Errorf("OptionsFromEnv() = %+v, want the four env overrides applied", o)
 	}
 }
+
+func TestNewBedrock(t *testing.T) {
+	t.Setenv("AWS_REGION", "us-east-1")
+	e, dim, err := New(Options{Mode: "bedrock", Model: "amazon.titan-embed-text-v2:0", Dim: 1024})
+	if err != nil {
+		t.Fatalf("New bedrock: %v", err)
+	}
+	if dim != 1024 {
+		t.Fatalf("dim = %d, want 1024", dim)
+	}
+	if _, ok := e.(Bedrock); !ok {
+		t.Fatalf("got %T, want Bedrock", e)
+	}
+}

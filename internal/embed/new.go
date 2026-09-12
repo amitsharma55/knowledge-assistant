@@ -1,12 +1,14 @@
 package embed
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/example/knowledge-assistant/internal/awsx"
 	"github.com/example/knowledge-assistant/internal/rag"
 )
 
@@ -20,7 +22,7 @@ const (
 )
 
 type Options struct {
-	Mode      string // "ollama" | "mock"
+	Mode      string // "ollama" | "bedrock" | "mock"
 	OllamaURL string
 	Model     string
 	Dim       int
@@ -46,11 +48,19 @@ func New(o Options) (rag.Embedder, int, error) {
 			// call, which takes far longer than a warm embed.
 			HTTP: &http.Client{Timeout: 60 * time.Second},
 		}, o.Dim, nil
+	case "bedrock":
+		// Titan on Bedrock is the daily-EKS embedder. The client resolves its
+		// region and credentials from the environment (AWS_REGION, Pod Identity).
+		client, err := awsx.BedrockRuntime(context.Background())
+		if err != nil {
+			return nil, 0, fmt.Errorf("embed: %w", err)
+		}
+		return Bedrock{Model: o.Model, Dim: o.Dim, api: client}, o.Dim, nil
 	case "mock":
 		return Mock{Dim: o.Dim}, o.Dim, nil
 	default:
 		return nil, 0, fmt.Errorf(
-			"embed: unknown KA_EMBED_MODE %q; want \"ollama\" or \"mock\"", o.Mode)
+			"embed: unknown KA_EMBED_MODE %q; want \"ollama\", \"bedrock\" or \"mock\"", o.Mode)
 	}
 }
 
