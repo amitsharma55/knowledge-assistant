@@ -12,18 +12,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/example/knowledge-assistant/internal/awsx"
 	"github.com/example/knowledge-assistant/internal/chunker"
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
 	"github.com/example/knowledge-assistant/internal/team"
 	"github.com/example/knowledge-assistant/services/ingestion/internal/gitlab"
+	"github.com/example/knowledge-assistant/services/ingestion/internal/s3src"
 	"github.com/example/knowledge-assistant/services/ingestion/internal/storage"
 )
 
 func main() {
-	source := flag.String("source", "gitlab", "gitlab | fixtures")
+	source := flag.String("source", "gitlab", "gitlab | fixtures | s3")
 	space := flag.String("space", "", "fixture space label (fixtures mode only)")
 	fixturesDir := flag.String("fixtures", "fixtures", "directory of *.md files when source=fixtures")
+	bucket := flag.String("bucket", envOr("KA_DOCS_BUCKET", ""), "S3 docs bucket (source=s3)")
+	prefix := flag.String("prefix", "", "S3 key prefix (source=s3); defaults to \"<team>/\"")
 	teamSlug := flag.String("team", "", "team to stamp on every indexed doc (required; one of coupa, star, hr)")
 	osURL := flag.String("opensearch", envOr("KA_OPENSEARCH_URL", "http://localhost:9200"), "OpenSearch URL")
 	osIdx := flag.String("index", envOr("KA_OPENSEARCH_INDEX", "kb-chunks"), "OpenSearch index")
@@ -79,6 +83,26 @@ func main() {
 				SpaceKey: p.ProjectID + ":" + p.Source, ID: p.ID, Title: p.Title,
 				Markdown: p.Markdown, WebURL: p.WebURL, UpdatedAt: p.UpdatedAt,
 			})
+		}
+	case "s3":
+		if *bucket == "" {
+			log.Error("source=s3 requires -bucket or KA_DOCS_BUCKET")
+			os.Exit(2)
+		}
+		p := *prefix
+		if p == "" {
+			p = tm.Slug() + "/"
+		}
+		client, cerr := awsx.S3(ctx)
+		if cerr != nil {
+			log.Error("s3 client", "err", cerr)
+			os.Exit(1)
+		}
+		src := &s3src.Client{API: client, Bucket: *bucket, Prefix: p, Log: log}
+		var docs []s3src.Doc
+		docs, err = src.FetchAll(ctx)
+		for _, d := range docs {
+			pages = append(pages, s3Page(*bucket, p, d))
 		}
 	default:
 		log.Error("unknown source", "source", *source)
@@ -163,6 +187,22 @@ func loadFixtures(dir, space string) ([]page, error) {
 		})
 	}
 	return pages, nil
+}
+
+// s3Page maps an S3 object to the ingester's page shape. PageID is the key with
+// the prefix stripped and extension removed; the H1 becomes the title (falling
+// back to the filename slug for PDF/TXT), exactly as the fixtures source does.
+func s3Page(bucket, prefix string, d s3src.Doc) page {
+	rel := strings.TrimPrefix(d.Key, prefix)
+	id := strings.TrimSuffix(rel, filepath.Ext(rel))
+	return page{
+		SpaceKey:  "S3",
+		ID:        id,
+		Title:     chunker.Title(d.Text, strings.ReplaceAll(id, "-", " ")),
+		Markdown:  d.Text,
+		WebURL:    "s3://" + bucket + "/" + d.Key,
+		UpdatedAt: d.LastModified,
+	}
 }
 
 // docID scopes a document's identity to its team, so byte-identical content
