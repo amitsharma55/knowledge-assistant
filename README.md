@@ -332,3 +332,21 @@ secret. To remove everything deliberately:
 4. `terraform -chdir=terraform/foundation destroy`.
 5. Empty the state bucket, including all versions, then
    `terraform -chdir=terraform/bootstrap destroy`.
+
+### Daily stack (owner, each working session)
+
+The daily stack holds the expensive, disposable compute — the EKS cluster and
+the OpenSearch domain. Bring it up at the start of a session and destroy it at
+the end; the document corpus lives in S3 (foundation) and the OpenSearch index
+is rebuilt from it on each bring-up.
+
+    cd terraform/daily
+    cp private.auto.tfvars.example private.auto.tfvars   # set account values
+    cp backend.hcl.example backend.hcl                   # set the state bucket
+    terraform init -backend-config=backend.hcl
+    terraform apply
+    ./verify.sh                                          # after apply
+
+Tear down when done:
+
+    terraform destroy

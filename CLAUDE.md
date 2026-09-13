@@ -21,6 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Two Ollamas: the container on 11435 serves `nomic-embed-text`; native Ollama.app on 11434 serves `gpt-oss:20b` for rerank/rewrite. A 404 on the embed model means calls hit the wrong one.
 - `make run-api` sources `.env`, whose `KA_LLM_MODE` overrides anything set on the command line.
 - `make dev-down` passes `-v` and deletes the Docker volumes (index and pulled model).
+- `terraform/daily/` is the disposable stack (EKS + OpenSearch), applied and destroyed each working session. It reads the foundation stack via `terraform_remote_state` and creates no IAM. Its OpenSearch index is disposable; 4b rebuilds it from S3. Never leave it applied overnight.
 - A dev server started from a Claude session dies when the session ends unless detached (`nohup … & disown`); `/run-local` does this.
 - Team is required on every indexed doc and every request (`X-Team` header; dev identity via `X-Dev-User`) and is never inferred from content or path. Read `docs/superpowers/specs/2026-08-30-team-segregation-design.md` before changing retrieval scoping.
 - `fixtures/` is fabricated demo data. Docs are self-contained `##` sections of under ~800 words, with retrievable facts as bullets, not tables.

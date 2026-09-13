@@ -1,0 +1,7 @@
+# Copy to backend.hcl (gitignored). Set bucket to the bootstrap stack's
+# state_bucket_name output, then: terraform init -backend-config=backend.hcl
+bucket       = "ka-tfstate-000000000000"
+key          = "daily/terraform.tfstate"
+region       = "us-east-1"
+use_lockfile = true
+encrypt      = true
