@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down embed-pull reset-index seed seed-s3 run-api run-ingest run-ui test lint tf-check k8s-check build
+.PHONY: dev-up dev-down embed-pull reset-index seed seed-s3 run-api run-ingest run-ui test lint tf-check tf-backend k8s-check build
 
 dev-up:
 	docker compose -f deploy/docker/docker-compose.yml up -d
@@ -69,6 +69,18 @@ tf-check:
 
 k8s-check:
 	deploy/k8s/check.sh
+
+# Generate foundation/backend.hcl from the bootstrap stack's outputs so the state
+# bucket name is never copied by hand. Bootstrap keeps its state locally, so this
+# only reads that local state -- no backend calls, safe to run anytime after
+# `terraform apply` in bootstrap. Then: (cd terraform/foundation && terraform init
+# -backend-config=backend.hcl). backend.hcl is gitignored.
+tf-backend:
+	@bucket=$$(terraform -chdir=terraform/bootstrap output -raw state_bucket_name) && \
+	region=$$(terraform -chdir=terraform/bootstrap output -raw region) && \
+	printf 'bucket       = "%s"\nkey          = "foundation/terraform.tfstate"\nregion       = "%s"\nuse_lockfile = true\nencrypt      = true\n' \
+		"$$bucket" "$$region" > terraform/foundation/backend.hcl && \
+	echo "Wrote terraform/foundation/backend.hcl (bucket=$$bucket, region=$$region)"
 
 build:
 	CGO_ENABLED=0 go build -o bin/chat-api ./services/chat-api/cmd/server

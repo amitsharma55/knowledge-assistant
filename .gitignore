@@ -18,6 +18,8 @@ coverage.out
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.plan
+plan.txt
 private.auto.tfvars
 backend.hcl
 deploy/k8s/.generated/

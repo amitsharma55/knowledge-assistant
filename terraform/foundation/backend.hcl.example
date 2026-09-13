@@ -1,5 +1,6 @@
-# Copy to backend.hcl (gitignored). Set bucket to the bootstrap stack's
-# state_bucket_name output, then run:
+# Prefer `make tf-backend`, which writes backend.hcl from the bootstrap stack's
+# outputs. This example is the manual fallback: copy it to backend.hcl (gitignored),
+# set bucket to the bootstrap stack's state_bucket_name output, then run:
 #   terraform init -backend-config=backend.hcl
 bucket       = "ka-tfstate-000000000000"
 key          = "foundation/terraform.tfstate"
