@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down embed-pull reset-index seed seed-s3 run-api run-ingest run-ui test lint tf-check build
+.PHONY: dev-up dev-down embed-pull reset-index seed seed-s3 run-api run-ingest run-ui test lint tf-check k8s-check build
 
 dev-up:
 	docker compose -f deploy/docker/docker-compose.yml up -d
@@ -66,6 +66,9 @@ lint:
 
 tf-check:
 	terraform/check.sh
+
+k8s-check:
+	deploy/k8s/check.sh
 
 build:
 	CGO_ENABLED=0 go build -o bin/chat-api ./services/chat-api/cmd/server
