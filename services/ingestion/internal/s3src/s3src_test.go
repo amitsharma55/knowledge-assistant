@@ -19,9 +19,11 @@ type stubS3 struct {
 	callN     int
 	bodies    map[string]string
 	getErr    error
+	tokensIn  []string
 }
 
-func (s *stubS3) ListObjectsV2(_ context.Context, _ *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+func (s *stubS3) ListObjectsV2(_ context.Context, in *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	s.tokensIn = append(s.tokensIn, aws.ToString(in.ContinuationToken))
 	out := s.listPages[s.callN]
 	s.callN++
 	return out, nil
@@ -84,6 +86,30 @@ func TestFetchAllPaginates(t *testing.T) {
 	}
 	if len(docs) != 2 {
 		t.Fatalf("want 2 docs across pages, got %d", len(docs))
+	}
+	if len(stub.tokensIn) != 2 || stub.tokensIn[1] != "tok" {
+		t.Fatalf("want second call to carry continuation token %q, got %v", "tok", stub.tokensIn)
+	}
+}
+
+func TestFetchAllSkipsEmptyAfterExtract(t *testing.T) {
+	mod := time.Now()
+	stub := &stubS3{
+		listPages: []*s3.ListObjectsV2Output{
+			page(false, "",
+				obj("coupa/blank.txt", 4, mod), // non-empty size, extracts to whitespace-only text
+				obj("coupa/ok.md", 5, mod),     // good
+			),
+		},
+		bodies: map[string]string{"coupa/blank.txt": "   \n\t", "coupa/ok.md": "# Ok\n\nx"},
+	}
+	c := &Client{API: stub, Bucket: "b", Prefix: "coupa/"}
+	docs, err := c.FetchAll(context.Background())
+	if err != nil {
+		t.Fatalf("FetchAll: %v", err)
+	}
+	if len(docs) != 1 || docs[0].Key != "coupa/ok.md" {
+		t.Fatalf("expected only ok.md, got %+v", docs)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -89,9 +90,19 @@ func main() {
 			log.Error("source=s3 requires -bucket or KA_DOCS_BUCKET")
 			os.Exit(2)
 		}
+		explicitPrefix := *prefix != ""
 		p := *prefix
 		if p == "" {
 			p = tm.Slug() + "/"
+		} else if !strings.HasSuffix(p, "/") {
+			// Without a trailing slash, ListObjectsV2 over-matches sibling
+			// prefixes (coupa vs coupa-archive/) and s3Page's TrimPrefix
+			// leaves a leading slash in the id (/a.md -> id /a).
+			p += "/"
+		}
+		if explicitPrefix && !strings.HasPrefix(p, tm.Slug()+"/") {
+			log.Error(fmt.Sprintf("s3: -prefix %q does not match -team %q; team is never stamped from a mismatched prefix", p, tm.Slug()))
+			os.Exit(2)
 		}
 		client, cerr := awsx.S3(ctx)
 		if cerr != nil {
