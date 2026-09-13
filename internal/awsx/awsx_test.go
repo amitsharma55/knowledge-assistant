@@ -16,3 +16,14 @@ func TestBedrockRuntimeUsesRegion(t *testing.T) {
 		t.Fatal("BedrockRuntime returned a nil client")
 	}
 }
+
+func TestS3UsesRegion(t *testing.T) {
+	t.Setenv("AWS_REGION", "us-east-1")
+	c, err := S3(context.Background())
+	if err != nil {
+		t.Fatalf("S3: %v", err)
+	}
+	if c == nil {
+		t.Fatal("S3 returned a nil client")
+	}
+}
