@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down embed-pull reset-index seed run-api run-ingest run-ui test lint tf-check build
+.PHONY: dev-up dev-down embed-pull reset-index seed seed-s3 run-api run-ingest run-ui test lint tf-check build
 
 dev-up:
 	docker compose -f deploy/docker/docker-compose.yml up -d
@@ -35,6 +35,15 @@ seed: embed-pull reset-index
 	@# (1s by default). Without this, a query issued immediately after
 	@# seeding sees an empty index and looks like a retrieval failure.
 	@curl -s -X POST "$${KA_OPENSEARCH_URL:-http://localhost:9200}/$${KA_OPENSEARCH_INDEX:-kb-chunks}/_refresh" >/dev/null
+
+# Copy the fabricated fixture corpus into the docs bucket, one prefix per team.
+# Owner-run: needs AWS credentials and KA_DOCS_BUCKET. Mirrors the per-team
+# layout the S3 source expects (s3://$(KA_DOCS_BUCKET)/<team>/).
+seed-s3:
+	@test -n "$(KA_DOCS_BUCKET)" || { echo "set KA_DOCS_BUCKET"; exit 1; }
+	aws s3 cp fixtures/coupa "s3://$(KA_DOCS_BUCKET)/coupa/" --recursive --exclude "*" --include "*.md"
+	aws s3 cp fixtures/star  "s3://$(KA_DOCS_BUCKET)/star/"  --recursive --exclude "*" --include "*.md"
+	aws s3 cp fixtures/hr    "s3://$(KA_DOCS_BUCKET)/hr/"    --recursive --exclude "*" --include "*.md"
 
 run-api:
 	@if [ -f .env ]; then set -a; . ./.env; set +a; fi; \

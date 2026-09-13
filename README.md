@@ -94,6 +94,24 @@ and `KA_REWRITE_MODE=off`; only the container is needed. Note that
 Ollama.app installs itself as a login item and restarts with your Mac, so
 it can reappear after a reboot even if you quit it.
 
+### Ingesting from S3 (the AWS/EKS environment)
+
+Documents live in the docs bucket under one prefix per team
+(`s3://$KA_DOCS_BUCKET/<team>/`). The indexer reads a single team's prefix per
+run; team is passed explicitly and never inferred from a key. PDF, Markdown and
+plain text are ingested (via `internal/extract`).
+
+Owner-run (needs AWS credentials):
+
+    export KA_DOCS_BUCKET=ka-docs-<account-id>
+    make seed-s3                                   # one-time: load the fixture corpus
+    indexer -source s3 -team coupa -bucket $KA_DOCS_BUCKET
+    indexer -source s3 -team star  -bucket $KA_DOCS_BUCKET
+    indexer -source s3 -team hr    -bucket $KA_DOCS_BUCKET
+
+`make seed-s3` copies `fixtures/<team>/` to each prefix; the fixtures already
+sit under `fixtures/{coupa,star,hr}/`.
+
 ## Embeddings
 
 Text is embedded by a local Ollama container (`nomic-embed-text`, 768
