@@ -1,0 +1,12 @@
+{
+  "cluster_name": {"value": "ka-daily"},
+  "region": {"value": "us-east-1"},
+  "vpc_id": {"value": "vpc-000"},
+  "opensearch_endpoint": {"value": "vpc-ka-abc.us-east-1.es.amazonaws.com"},
+  "docs_bucket": {"value": "ka-docs-123456789012"},
+  "ecr_repository_urls": {"value": {
+    "knowledge-assistant/chat-api": "123456789012.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/chat-api",
+    "knowledge-assistant/ui": "123456789012.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/ui",
+    "knowledge-assistant/ingestion": "123456789012.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/ingestion"
+  }}
+}
