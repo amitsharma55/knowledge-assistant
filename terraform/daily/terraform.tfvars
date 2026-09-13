@@ -19,6 +19,6 @@ opensearch_instance_type  = "t3.small.search"
 opensearch_volume_size    = 20
 opensearch_tls_policy     = "Policy-Min-TLS-1-2-2019-07"
 
-chat_api_namespace      = "default"
-ingestion_namespace     = "default"
+chat_api_namespace      = "knowledge-assistant"
+ingestion_namespace     = "knowledge-assistant"
 lb_controller_namespace = "kube-system"

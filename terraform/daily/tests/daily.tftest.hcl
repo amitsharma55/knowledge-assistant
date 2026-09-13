@@ -68,6 +68,11 @@ override_data {
       eks_node_role_arn            = "arn:aws:iam::123456789012:role/zz-eks-node"
       admin_principal_arn          = "arn:aws:iam::123456789012:user/tester"
       docs_bucket                  = "zz-docs-123456789012"
+      ecr_repository_urls = {
+        "knowledge-assistant/chat-api"  = "123456789012.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/chat-api"
+        "knowledge-assistant/ingestion" = "123456789012.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/ingestion"
+        "knowledge-assistant/ui"        = "123456789012.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/ui"
+      }
       pod_role_arns = {
         "chat-api"          = "arn:aws:iam::123456789012:role/zz-chat-api"
         "ingestion"         = "arn:aws:iam::123456789012:role/zz-ingestion"
@@ -85,8 +90,8 @@ variables {
   foundation_state_key    = "foundation/terraform.tfstate"
   tags                    = { Project = "p", ManagedBy = "m", Stack = "daily" }
 
-  chat_api_namespace      = "default"
-  ingestion_namespace     = "default"
+  chat_api_namespace      = "knowledge-assistant"
+  ingestion_namespace     = "knowledge-assistant"
   lb_controller_namespace = "kube-system"
 }
 
@@ -192,5 +197,25 @@ run "pod_identity_bindings" {
   assert {
     condition     = aws_eks_pod_identity_association.lb_controller.role_arn == "arn:aws:iam::123456789012:role/zz-lb"
     error_message = "lb-controller association must bind the foundation aws-lb-controller role"
+  }
+
+  assert {
+    condition     = aws_eks_pod_identity_association.chat_api.namespace == "knowledge-assistant"
+    error_message = "chat-api association must bind the knowledge-assistant namespace"
+  }
+
+  assert {
+    condition     = aws_eks_pod_identity_association.ingestion.namespace == "knowledge-assistant"
+    error_message = "ingestion association must bind the knowledge-assistant namespace"
+  }
+
+  assert {
+    condition     = output.docs_bucket != "" && output.vpc_id != ""
+    error_message = "docs_bucket and vpc_id must be passed through from foundation"
+  }
+
+  assert {
+    condition     = output.ecr_repository_urls["knowledge-assistant/chat-api"] != ""
+    error_message = "ecr_repository_urls must expose the chat-api repository URL"
   }
 }

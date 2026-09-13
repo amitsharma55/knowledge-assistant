@@ -44,3 +44,18 @@ output "verify_expectations" {
     opensearch_domain = "${var.name_prefix}-daily"
   }
 }
+
+output "docs_bucket" {
+  description = "Foundation's document corpus bucket; the reseed Job reads the S3 corpus from it."
+  value       = local.foundation.docs_bucket
+}
+
+output "ecr_repository_urls" {
+  description = "Foundation's ECR repository URLs, keyed by repository name; deploy.sh builds image refs from these."
+  value       = local.foundation.ecr_repository_urls
+}
+
+output "vpc_id" {
+  description = "Foundation's VPC id; the ALB controller Helm install needs it."
+  value       = local.foundation.vpc_id
+}
