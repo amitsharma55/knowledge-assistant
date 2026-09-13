@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+  namespace: knowledge-assistant
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ui }
+  template:
+    metadata:
+      labels: { app: ui }
+    spec:
+      containers:
+        - name: ui
+          image: ka/ui:placeholder  # overlay rewrites via images: transformer
+          ports: [{ containerPort: 80 }]
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 3
+          resources:
+            requests: { cpu: "50m",  memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "128Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  namespace: knowledge-assistant
+spec:
+  selector: { app: ui }
+  ports:
+    - { port: 80, targetPort: 80 }

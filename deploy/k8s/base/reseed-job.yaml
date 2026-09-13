@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: reseed
+  namespace: knowledge-assistant
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      serviceAccountName: ingestion  # Pod Identity: S3 (read corpus) + Bedrock (embed) + OpenSearch (write)
+      restartPolicy: Never
+      initContainers:
+        - name: reseed-coupa
+          image: ka/ingestion:placeholder
+          args: ["-source", "s3", "-team", "coupa"]
+          envFrom: [{ configMapRef: { name: reseed-env } }]
+          env:
+            - name: KA_OPENSEARCH_URL
+              valueFrom: { configMapKeyRef: { name: ka-config, key: opensearch_url } }
+            - name: KA_DOCS_BUCKET
+              valueFrom: { configMapKeyRef: { name: ka-config, key: docs_bucket } }
+        - name: reseed-star
+          image: ka/ingestion:placeholder
+          args: ["-source", "s3", "-team", "star"]
+          envFrom: [{ configMapRef: { name: reseed-env } }]
+          env:
+            - name: KA_OPENSEARCH_URL
+              valueFrom: { configMapKeyRef: { name: ka-config, key: opensearch_url } }
+            - name: KA_DOCS_BUCKET
+              valueFrom: { configMapKeyRef: { name: ka-config, key: docs_bucket } }
+      containers:
+        - name: reseed-hr
+          image: ka/ingestion:placeholder
+          args: ["-source", "s3", "-team", "hr"]
+          envFrom: [{ configMapRef: { name: reseed-env } }]
+          env:
+            - name: KA_OPENSEARCH_URL
+              valueFrom: { configMapKeyRef: { name: ka-config, key: opensearch_url } }
+            - name: KA_DOCS_BUCKET
+              valueFrom: { configMapKeyRef: { name: ka-config, key: docs_bucket } }

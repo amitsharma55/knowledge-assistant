@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reseed-env
+  namespace: knowledge-assistant
+data:
+  AWS_REGION: us-east-1
+  KA_EMBED_MODE: bedrock
+  KA_EMBED_MODEL: "amazon.titan-embed-text-v2:0"
+  KA_EMBED_DIM: "1024"

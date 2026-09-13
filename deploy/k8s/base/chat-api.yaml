@@ -4,24 +4,22 @@ metadata:
   name: chat-api
   namespace: knowledge-assistant
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels: { app: chat-api }
   template:
     metadata:
       labels: { app: chat-api }
     spec:
-      serviceAccountName: chat-api  # EKS Pod Identity: bedrock + secrets + opensearch
+      serviceAccountName: chat-api  # EKS Pod Identity: Bedrock + Secrets Manager + OpenSearch
       containers:
         - name: chat-api
-          image: <account>.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/chat-api:latest
+          image: ka/chat-api:placeholder  # overlay rewrites via images: transformer
           ports: [{ containerPort: 8080 }]
-          # The answer LLM is the direct Anthropic API (the pod may read the
-          # Claude key from Secrets Manager, not invoke Claude on Bedrock);
-          # embeddings and rerank/rewrite go through Bedrock.
           env:
             - { name: KA_LLM_MODE, value: anthropic }
             - { name: AWS_REGION, value: us-east-1 }
+            # Must match foundation's anthropic_secret_name.
             - { name: KA_ANTHROPIC_SECRET_ID, value: ka/anthropic-api-key }
             - { name: KA_EMBED_MODE, value: bedrock }
             - { name: KA_EMBED_MODEL, value: "amazon.titan-embed-text-v2:0" }
@@ -30,16 +28,20 @@ spec:
             - { name: KA_RERANK_MODEL, value: "openai.gpt-oss-20b-1:0" }
             - { name: KA_REWRITE_MODE, value: bedrock }
             - { name: KA_REWRITE_MODEL, value: "openai.gpt-oss-20b-1:0" }
-            - { name: KA_OPENSEARCH_URL, valueFrom: { secretKeyRef: { name: ka-config, key: opensearch_url } } }
-          resources:
-            requests: { cpu: "250m", memory: "256Mi" }
-            limits:   { cpu: "1",    memory: "512Mi" }
+            # PROVISIONAL: 0.81 is calibrated for local nomic-768. Recalibrate
+            # for Titan-v2 with /check-retrieval against the running stack.
+            - { name: KA_RELEVANCE_FLOOR, value: "0.81" }
+            - name: KA_OPENSEARCH_URL
+              valueFrom: { configMapKeyRef: { name: ka-config, key: opensearch_url } }
           readinessProbe:
             httpGet: { path: /healthz, port: 8080 }
             initialDelaySeconds: 3
           livenessProbe:
             httpGet: { path: /healthz, port: 8080 }
             initialDelaySeconds: 10
+          resources:
+            requests: { cpu: "250m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "512Mi" }
 ---
 apiVersion: v1
 kind: Service
@@ -49,23 +51,4 @@ metadata:
 spec:
   selector: { app: chat-api }
   ports:
-    - port: 8080
-      targetPort: 8080
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: chat-api
-  namespace: knowledge-assistant
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: chat-api
-  minReplicas: 2
-  maxReplicas: 10
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target: { type: Utilization, averageUtilization: 70 }
+    - { port: 8080, targetPort: 8080 }

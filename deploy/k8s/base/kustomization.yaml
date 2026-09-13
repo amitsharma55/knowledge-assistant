@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - serviceaccounts.yaml
+  - reseed-env.yaml
+  - chat-api.yaml
+  - ui.yaml
+  - ingress.yaml
+  - reseed-job.yaml
