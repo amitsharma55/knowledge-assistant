@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+case "$*" in
+  *readyReplicas*)          echo 1 ;;
+  *status.succeeded*)       echo 1 ;;
+  *loadBalancer*hostname*)  echo "ka-alb.us-east-1.elb.amazonaws.com" ;;
+  *)                        echo "" ;;
+esac
