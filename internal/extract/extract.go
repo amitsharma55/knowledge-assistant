@@ -30,6 +30,16 @@ func FromBytes(filename string, data []byte) (string, error) {
 	}
 }
 
+// Supported reports whether FromBytes can read the file named name.
+func Supported(name string) bool {
+	n := strings.ToLower(name)
+	return strings.HasSuffix(n, ".pdf") ||
+		strings.HasSuffix(n, ".md") ||
+		strings.HasSuffix(n, ".markdown") ||
+		strings.HasSuffix(n, ".txt") ||
+		strings.HasSuffix(n, ".text")
+}
+
 func fromPDF(data []byte) (string, error) {
 	r, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
