@@ -18,11 +18,11 @@ infrastructure, application deploy, image build/orchestration, and DNS/TLS —
 too much for one spec. It is decomposed into three phases:
 
 - **4a — Daily infrastructure (this spec):** the EKS cluster, managed node
-  group, OpenSearch domain, Pod Identity associations, and the AWS Load
-  Balancer Controller. Pure infrastructure, pointed at foundation's outputs.
+  group, OpenSearch domain, and Pod Identity associations. Pure Terraform,
+  AWS-provider-only, pointed at foundation's outputs.
 - **4b — Application deploy:** Kubernetes manifests, the `ka-config` secret,
-  index creation, the reseed Job/CronJob that reads the corpus from S3, the
-  Ingress, and DNS/TLS.
+  the AWS Load Balancer Controller (Helm), index creation, the reseed
+  Job/CronJob that reads the corpus from S3, the Ingress, and DNS/TLS.
 - **4c — Images & orchestration:** build/push images to ECR, the
   morning-up / evening-down sequencing, and the teardown safety net.
 
@@ -55,10 +55,11 @@ orchestration waits on domain state; 4a's own resources are otherwise fast.
 - The identity that applies the stack immediately has cluster admin, via an EKS
   access entry for foundation's `admin_principal_arn`.
 - Pods can assume their foundation roles through Pod Identity: chat-api reaches
-  Bedrock and Secrets Manager, ingestion reaches S3 and OpenSearch, the load
-  balancer controller manages ALBs.
-- The cluster can provision ALBs (controller installed), but 4a creates no
-  Ingress.
+  Bedrock and Secrets Manager, ingestion reaches S3 and OpenSearch, and the load
+  balancer controller's service account is pre-bound to its role so that when 4b
+  installs the controller it can manage ALBs immediately.
+- 4a installs no cluster workloads and no Helm releases; it creates no Ingress
+  and no load balancer controller.
 - Every value that could vary — Kubernetes version, instance types, node counts,
   OpenSearch engine version and sizing, namespaces, service-account names — comes
   from tfvars. The `.tf` files contain no literal configuration
@@ -69,9 +70,12 @@ orchestration waits on domain state; 4a's own resources are otherwise fast.
 
 ## Non-Goals
 
-- **Everything in 4b:** Kubernetes manifests, the `ka-config` secret, creating
-  the OpenSearch index (`EnsureIndex`), the reseed Job/CronJob, the Ingress,
-  DNS, and TLS. 4a leaves an empty domain and a cluster with no workloads.
+- **Everything in 4b:** Kubernetes manifests, the `ka-config` secret, installing
+  the AWS Load Balancer Controller (Helm), creating the OpenSearch index
+  (`EnsureIndex`), the reseed Job/CronJob, the Ingress, DNS, and TLS. 4a leaves
+  an empty domain and a cluster with no workloads.
+- **Any Helm or Kubernetes provider in the stack.** 4a is AWS-provider-only so it
+  stays offline-testable with `terraform test`; workloads are 4b's job.
 - **Everything in 4c:** image build/push, morning-up/evening-down commands, the
   forgotten-teardown safety net.
 - New IAM. Foundation owns all roles by design; 4a references their ARNs.
@@ -85,14 +89,29 @@ orchestration waits on domain state; 4a's own resources are otherwise fast.
 ## Decisions
 
 **Build with the community EKS module + a hand-rolled OpenSearch domain.**
-`terraform-aws-modules/eks` (version pinned) builds the cluster, node group,
-access entries, and addons — including the AWS Load Balancer Controller as an
-EKS-managed addon. OpenSearch is a single `aws_opensearch_domain` resource. The
-alternatives — fully hand-rolled EKS, or the controller via the Helm provider —
-were rejected: hand-rolled EKS is a large, leak-prone surface, and a
-Helm-managed controller must be destroyed before the cluster or `terraform
-destroy` hangs. The managed addon lets AWS sequence the controller's teardown,
-which the daily destroy rhythm depends on.
+`terraform-aws-modules/eks` v21 (`~> 21.25`, requires `aws >= 6.59`, satisfied by
+foundation's `~> 6.64`) builds the cluster, managed node group, access entries,
+and the core add-ons. OpenSearch is a single `aws_opensearch_domain` resource.
+Fully hand-rolled EKS was rejected as a large, leak-prone surface.
+
+**The AWS Load Balancer Controller is installed in 4b, not 4a.** AWS publishes no
+managed EKS add-on for it (it is a built-in capability only of EKS Auto Mode,
+which we are not using), so the only ways to install it are Helm or a raw
+manifest — both cluster workloads, not infrastructure. Pulling the Helm or
+Kubernetes provider into 4a would break its offline `terraform test` story.
+Therefore 4a installs no controller and creates only the *Pod Identity
+association* that pre-binds the controller's service account
+(`kube-system/aws-load-balancer-controller`) to foundation's role; 4b
+`helm install`s the controller into that already-bound service account.
+Destroy-safety is a 4c ordering concern regardless of install method: the
+Ingress (which provisions the real ALB) must be deleted before the cluster is
+destroyed.
+
+**Reuse foundation's IAM roles.** The EKS module accepts a pre-created cluster
+role (`create_iam_role = false`, `iam_role_arn = ...`) and a pre-created node
+role per node group (`create_iam_role = false`, `iam_role_arn = ...` inside the
+`eks_managed_node_groups` entry), so 4a creates no IAM — foundation owns all of
+it.
 
 **Foundation is the source of truth for identity and networking.** 4a reads
 everything it needs from foundation's outputs and declares no roles, subnets, or
@@ -115,7 +134,8 @@ New stack at `terraform/daily/`, mirroring foundation's file-per-concern style:
   `terraform-aws-modules/eks` module version. Adds nothing that needs
   credentials for `make tf-check`.
 - `eks.tf` — the EKS module invocation: cluster, managed node group, access
-  entries, core addons, ALB controller addon.
+  entries, and the core add-ons (`vpc-cni`, `coredns`, `kube-proxy`,
+  `eks-pod-identity-agent`).
 - `opensearch.tf` — the hand-rolled `aws_opensearch_domain` and its config.
 - `pod-identity.tf` — three `aws_eks_pod_identity_association` resources.
 - `variables.tf` / `terraform.tfvars` — all knobs; no literals in `.tf`.
@@ -131,11 +151,10 @@ The `terraform-aws-modules/eks` invocation, sized for a solo demo:
   `subnet_ids` from foundation's remote state. Public API endpoint enabled
   (kubectl from the owner's laptop); private access also enabled so pods reach
   the API in-VPC.
-- **IAM roles:** reuse foundation's `eks_cluster_role_arn` and `eks_node_role_arn`
-  rather than letting the module create roles — foundation owns identity by
-  design. If the module cannot accept a pre-created node role, fall back to a
-  module-created node role and record the deviation in the plan; the cluster role
-  must still be foundation's.
+- **IAM roles:** reuse foundation's `eks_cluster_role_arn` (module
+  `create_iam_role = false` + `iam_role_arn`) and `eks_node_role_arn` (per
+  node group: `create_iam_role = false` + `iam_role_arn`). Foundation owns
+  identity by design; 4a creates no IAM role.
 - **Managed node group:** `t3.medium`, on-demand, min 1 / desired 1 / max 2 (all
   in tfvars), in foundation's public subnets.
 - **Access:** authentication mode `API` (access entries only, no aws-auth
@@ -183,22 +202,28 @@ does not race the agent install. 4a creates the *associations*; the
 ServiceAccount objects are created in 4b. Pod Identity binds by name and does not
 require the SA to exist at apply time, so this ordering keeps 4a app-free.
 
-## ALB controller & destroy safety
+## Load balancer controller wiring & destroy safety
 
-The AWS Load Balancer Controller is installed as an **EKS-managed addon** (not a
-Helm release), declared in the EKS module's addons alongside the core addons. Its
-permissions come from foundation's `aws-lb-controller` Pod Identity role, so the
-addon needs no IRSA/OIDC wiring of its own. 4a creates no Ingress, so a plain
-`terraform destroy` of 4a has no ALB to leak — the controller goes down with the
-cluster.
+4a does **not** install the AWS Load Balancer Controller — AWS publishes no
+managed add-on for it, and installing it via Helm or a manifest would pull a
+cluster-workload provider into an otherwise AWS-provider-only stack. What 4a does
+own is the **Pod Identity association** that pre-binds the controller's service
+account (`kube-system/aws-load-balancer-controller`) to foundation's
+`aws-lb-controller` role. Because associations bind by name and do not require
+the service account (or the controller) to exist at apply time, 4b can later
+`helm install` the controller into that service account and it has permissions
+immediately. This keeps the IAM wiring in Terraform (foundation-owned identity)
+while the workload lives in 4b.
 
-The cross-layer hazard: if 4b creates an Ingress (provisioning a real ALB), that
-ALB and its ENIs must be deleted *before* 4a destroys the cluster, or
-subnet/ENI-dependent deletes hang. Two guardrails:
+Since 4a installs no controller and creates no Ingress, a plain `terraform
+destroy` of 4a has no ALB to leak. The cross-layer hazard belongs to later
+phases: once 4b creates an Ingress (which provisions a real ALB), that ALB and
+its ENIs must be deleted *before* 4a destroys the cluster, or subnet/ENI-
+dependent deletes hang. Two guardrails, both outside 4a:
 
 1. **Ordering is 4c's contract:** evening-down deletes Kubernetes Ingress
    resources (releasing ALBs), waits, then runs `terraform destroy` on 4a.
-2. **Documented recovery:** 4a's destroy runbook records the failure signature
+2. **Documented recovery:** the destroy runbook records the failure signature
    (destroy hanging on a subnet/ENI dependency) and the manual fix (delete the
    orphaned ALB, retry). 4c's teardown safety net automates the check.
 
@@ -217,8 +242,8 @@ in 4c.
 - `node_group_name` — for teardown/scale checks in 4c.
 - `region` — passed through from foundation.
 - `verify_expectations` — the values `verify.sh` checks against the live account:
-  cluster status `ACTIVE`, node count, OpenSearch `Active`, and the addon list
-  (including `eks-pod-identity-agent` and the load balancer controller).
+  cluster status `ACTIVE`, node count, OpenSearch `Active`, and the add-on list
+  (`vpc-cni`, `coredns`, `kube-proxy`, `eks-pod-identity-agent`).
 
 ## Testing & validation
 
