@@ -13,11 +13,11 @@ grounded in markdown documentation stored in a GitLab repo and/or project wiki.
 
 ### Prerequisites
 
-- **Docker Desktop** — runs OpenSearch, LocalStack (S3), Postgres, and the
+- **Docker Desktop** â runs OpenSearch, LocalStack (S3), Postgres, and the
   embedding Ollama.
-- **Go** and **Node** — chat-api and the indexer run on the host, not in
+- **Go** and **Node** â chat-api and the indexer run on the host, not in
   containers.
-- **Ollama.app** (optional) — only if you want reranking or follow-up
+- **Ollama.app** (optional) â only if you want reranking or follow-up
   rewriting, which need `gpt-oss:20b`. See [Two Ollamas](#two-ollamas).
 
 ### Starting from scratch
@@ -68,8 +68,8 @@ different models:
 | `11434` | native Ollama.app | `gpt-oss:20b` | rerank, rewrite | `KA_RERANK_URL`, `KA_REWRITE_URL` |
 
 The container is on 11435 deliberately. If both listen on 11434 there is
-**no bind error** — the app binds IPv4 `127.0.0.1:11434` and a Docker port
-binding takes IPv6 `[::]:11434`, so they coexist — but `localhost` resolves
+**no bind error** â the app binds IPv4 `127.0.0.1:11434` and a Docker port
+binding takes IPv6 `[::]:11434`, so they coexist â but `localhost` resolves
 IPv4-first, so every embed call silently reaches the app, which does not
 have `nomic-embed-text`:
 
@@ -79,7 +79,7 @@ retrieve: embed: ollama embed: http://localhost:11434/api/embed returned 404:
 ```
 
 That error means requests are going to the **wrong Ollama**, not that the
-pull failed — `make embed-pull` puts the model in the container, where
+pull failed â `make embed-pull` puts the model in the container, where
 `ollama list` on the host cannot see it (the host CLI talks to the app).
 To tell the two apart:
 
@@ -128,12 +128,12 @@ pull re-downloads ~270MB.
 | `KA_EMBED_DIM` | `768` | Vector width; must match the model |
 
 `KA_EMBED_MODE=mock` uses hash vectors with no semantic content. It exists
-for tests and for exercising the pipeline offline — retrieval results under
+for tests and for exercising the pipeline offline â retrieval results under
 it are meaningless, so it is never the default and an unknown mode is a
 startup error rather than a silent fall back to it.
 
 `KA_RELEVANCE_FLOOR` (default `0.81`) is a cutoff on the `(1+cos)/2` scale
-both retrievers report. It gates only the cross-team suggestion — chunks
+both retrievers report. It gates only the cross-team suggestion â chunks
 below it still reach the model, and the refusal wording comes from the
 prompt.
 
@@ -142,7 +142,7 @@ over the 23-document corpus, the 30 answerable ones score no lower than
 0.8421 and the 6 that are not answerable in the asking team score no higher
 than 0.7739. The default is the midpoint of that gap. Re-derive it with
 `python3 scripts/check_corpus.py --scores` after changing `KA_EMBED_MODEL`
-or the corpus — absolute cosine thresholds do not transfer between models,
+or the corpus â absolute cosine thresholds do not transfer between models,
 and embeddings are anisotropic, so unrelated text sits nowhere near 0.5.
 
 Both chat-api and the indexer build their embedder from `embed.New`, so they
@@ -151,7 +151,7 @@ vectors would return confident, unrelated results with no error anywhere.
 
 The vector width is fixed in the index mapping when the index is created.
 Changing `KA_EMBED_MODEL` to a model of a different width therefore requires
-a reindex — `EnsureIndex` refuses to proceed and tells you so rather than
+a reindex â `EnsureIndex` refuses to proceed and tells you so rather than
 dropping your corpus:
 
 ```sh
@@ -163,7 +163,7 @@ curl -X DELETE http://localhost:9200/kb-chunks && make seed
 Every request is scoped to one team: `coupa`, `star`, or `hr`. `GET
 /v1/teams` returns only the caller's own teams (`[{"slug", "displayName"},
 ...]`, always an array); every other request must send `X-Team: <slug>`
-identifying which of those teams to query. There is no default team — a
+identifying which of those teams to query. There is no default team â a
 request with no `X-Team` header is rejected (`401`/`400`, not silently
 scoped to "everything"), and a team the caller does not belong to gets a
 `403` that is deliberately indistinguishable from an unknown team, so a
@@ -181,7 +181,7 @@ membership table (`middleware.DemoMembers`) is:
 | `b@example.com`      | star, hr           |
 | `dev@example.com` (default, no header sent) | coupa, star, hr |
 
-**There is no prod mode yet — do not deploy this as-is.**
+**There is no prod mode yet â do not deploy this as-is.**
 `cmd/server/main.go` hardcodes `middleware.Auth(true /* dev */)`, and dev
 `Auth` trusts `X-Dev-User` verbatim with no signature or session check
 behind it. That means the entire team boundary described above currently
@@ -193,7 +193,7 @@ verification (and a real prod auth mode) is required, and out of scope
 for this branch, before this is exposed to any untrusted network.
 
 Team is derived from the SharePoint site a document lives in, not from
-per-item permissions — **item-level SharePoint ACLs are not mirrored**, so
+per-item permissions â **item-level SharePoint ACLs are not mirrored**, so
 a document restricted to a subset of a team is visible to that entire
 team once ingested.
 
@@ -203,8 +203,8 @@ When a query scores below `KA_RELEVANCE_FLOOR` in the active team but
 would have scored above it in another team the caller belongs to, the
 `suggestion` SSE event offers to switch. This does **not** fire under the
 mock embedder (`KA_EMBED_MODE=mock`): mock embeddings carry no semantic
-signal, so nothing clears the floor in any team — every query scores
-around 0.5 on the `(1+cos)/2` scale (cosine ≈ 0), far below the default
+signal, so nothing clears the floor in any team â every query scores
+around 0.5 on the `(1+cos)/2` scale (cosine â 0), far below the default
 floor of `0.81`. Don't demo this feature without real embeddings (the
 default Ollama `nomic-embed-text`, or Titan); it needs actual semantic
 similarity to separate "no results here" from "results next door."
@@ -223,13 +223,13 @@ another embedder such as Titan.
 
 Titan v2 (1024-dim, normalized) has a different cosine distribution than
 `nomic-embed-text` (768-dim), so `KA_RELEVANCE_FLOOR` must be re-derived and
-the index reseeded. Neither CI nor an offline session can do this — it needs
+the index reseeded. Neither CI nor an offline session can do this â it needs
 live Bedrock credentials.
 
 1. Export the Bedrock embed settings and AWS credentials:
    `KA_EMBED_MODE=bedrock KA_EMBED_MODEL=amazon.titan-embed-text-v2:0 KA_EMBED_DIM=1024 AWS_REGION=us-east-1`.
-2. `make seed` — drops the 768-dim index first, so the width change is clean.
-3. `python3 scripts/check_corpus.py --scores` — read the lowest answerable
+2. `make seed` â drops the 768-dim index first, so the width change is clean.
+3. `python3 scripts/check_corpus.py --scores` â read the lowest answerable
    top score and the highest not-answerable-here top score.
 4. Set `KA_RELEVANCE_FLOOR` to the midpoint of that gap (the same method the
    `0.81` default used for `nomic-embed-text`).
@@ -242,7 +242,7 @@ predates the `team` field, since filtered k-NN search requires it and
 patching the mapping in place would leave already-indexed docs with no
 team value. If chat-api or the indexer fails at startup with an error
 like `index "kb-chunks" already exists but its mapping has no "team"
-field`, delete and reindex — this destroys existing indexed content, so
+field`, delete and reindex â this destroys existing indexed content, so
 do it deliberately:
 
 ```sh
@@ -256,11 +256,11 @@ Everything in AWS is managed with Terraform under `terraform/`, run from your
 laptop; GitHub Actions has no AWS access. Design:
 `docs/superpowers/specs/2026-09-10-aws-foundation-design.md`.
 
-- `terraform/bootstrap` — the S3 bucket that holds Terraform state (its own
+- `terraform/bootstrap` â the S3 bucket that holds Terraform state (its own
   state is local).
-- `terraform/foundation` — everything permanent: network, docs bucket, ECR, the
+- `terraform/foundation` â everything permanent: network, docs bucket, ECR, the
   Claude key secret, IAM roles, budget.
-- `terraform/daily` — the environment created each morning and destroyed each
+- `terraform/daily` â the environment created each morning and destroyed each
   evening (not built yet).
 
 All configuration is in each stack's `terraform.tfvars` (committed) and
@@ -335,7 +335,7 @@ secret. To remove everything deliberately:
 
 ### Daily stack (owner, each working session)
 
-The daily stack holds the expensive, disposable compute — the EKS cluster and
+The daily stack holds the expensive, disposable compute â the EKS cluster and
 the OpenSearch domain. Bring it up at the start of a session and destroy it at
 the end; the document corpus lives in S3 (foundation) and the OpenSearch index
 is rebuilt from it on each bring-up.
@@ -347,6 +347,21 @@ is rebuilt from it on each bring-up.
     terraform apply
     ./verify.sh                                          # after apply
 
-Tear down when done:
+Then deploy the app onto the fresh cluster (needs `helm`; `deploy.sh` sets the
+kubectl context). The images must already be in ECR (built in sub-project 4c):
 
-    terraform destroy
+    cd ../..                     # repo root
+    deploy/k8s/deploy.sh up      # or: deploy/k8s/deploy.sh up <image-tag>
+    deploy/k8s/smoke.sh          # after up
+
+`deploy.sh up` installs the AWS Load Balancer Controller, applies the workloads,
+rebuilds the OpenSearch index from the S3 corpus (coupa/star/hr), and prints the
+demo URL — an internet-facing HTTP ALB. `make k8s-check` validates these
+deploy assets offline (manifests render, the overlay renders from fixture
+outputs, the scripts pass syntax and logic tests) — no AWS, no cluster.
+
+Tear down when done — release the ALB before destroying the stack, or the
+destroy hangs on subnet/ENI dependencies:
+
+    deploy/k8s/deploy.sh down    # deletes the Ingress (releases the ALB) + workloads
+    cd terraform/daily && terraform destroy
