@@ -3,6 +3,7 @@ package secrets
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -24,7 +25,39 @@ func FetchAPIKey(ctx context.Context, api secretGetter, secretID string) (string
 	if out.SecretString == nil || strings.TrimSpace(*out.SecretString) == "" {
 		return "", fmt.Errorf("secrets: %q has no string value", secretID)
 	}
-	return strings.TrimSpace(*out.SecretString), nil
+	return keyFromSecret(secretID, strings.TrimSpace(*out.SecretString))
+}
+
+// keyFromSecret extracts the API key from a secret stored either as the bare
+// key or as a JSON object. The Secrets Manager console's "Key/value" editor
+// stores secrets as JSON (e.g. {"ANTHROPIC_API_KEY":"sk-..."}), while
+// `put-secret-value --secret-string sk-...` stores the bare string; a deploy
+// must not break just because the key was entered through the console. A raw
+// Anthropic key is never valid JSON, so anything not starting with '{' is
+// treated as the key verbatim.
+func keyFromSecret(secretID, s string) (string, error) {
+	if !strings.HasPrefix(s, "{") {
+		return s, nil
+	}
+	var m map[string]string
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return "", fmt.Errorf("secrets: %q looks like JSON but is not a flat {\"key\":\"value\"} object: %w; store it as a plaintext key or a JSON object with a string value", secretID, err)
+	}
+	// Prefer a recognized field name, then fall back to the sole entry so a
+	// single-key object works whatever the field is called.
+	for _, k := range []string{"ANTHROPIC_API_KEY", "anthropic_api_key", "api_key", "key"} {
+		if v := strings.TrimSpace(m[k]); v != "" {
+			return v, nil
+		}
+	}
+	if len(m) == 1 {
+		for _, v := range m {
+			if v := strings.TrimSpace(v); v != "" {
+				return v, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("secrets: %q is a JSON object with no non-empty API-key field (want one of ANTHROPIC_API_KEY, api_key, key, or a single entry)", secretID)
 }
 
 // Client builds a Secrets Manager client from the ambient credential chain.

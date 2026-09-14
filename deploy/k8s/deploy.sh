@@ -95,6 +95,12 @@ up() {
   # A Job is immutable once created; on a re-run delete the previous one first.
   kubectl -n knowledge-assistant delete job reseed --ignore-not-found
   kubectl apply -k "$gen"
+  # A re-deploy usually reuses the `latest` tag and the ConfigMap has a stable
+  # name (disableNameSuffixHash), so `apply` leaves the Deployment spec
+  # unchanged and no pods roll -- they keep the old image/config. Restart both
+  # so every deploy actually picks up the freshly pushed images and any
+  # ka-config change; rollout status then waits on the new ReplicaSet.
+  kubectl -n knowledge-assistant rollout restart deploy/chat-api deploy/ui
   kubectl -n knowledge-assistant rollout status deploy/chat-api --timeout=180s
   kubectl -n knowledge-assistant rollout status deploy/ui --timeout=180s
   kubectl -n knowledge-assistant wait --for=condition=complete job/reseed --timeout=600s
