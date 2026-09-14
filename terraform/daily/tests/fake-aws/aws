@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# A stand-in for the AWS CLI, just big enough for verify.sh.
+# A stand-in for the AWS CLI, just big enough for verify.sh. It mirrors the real
+# CLI's output shapes: list-addons prints names TAB-separated on one line (as
+# `--output text` does), and describe-nodegroup answers per the --query asked.
 set -euo pipefail
 
 case "${1:-} ${2:-}" in
@@ -7,13 +9,19 @@ case "${1:-} ${2:-}" in
     echo "${FAKE_CLUSTER_STATUS:-ACTIVE}"
     ;;
   "eks list-addons")
-    for a in ${FAKE_ADDONS:-}; do echo "$a"; done
+    # shellcheck disable=SC2086
+    printf '%s' "$(printf '%s\t' ${FAKE_ADDONS:-})" | sed 's/\t$//'
+    echo
     ;;
   "eks list-nodegroups")
-    echo "default"
+    echo "${FAKE_NODEGROUP_NAME:-default-abc123}"
     ;;
   "eks describe-nodegroup")
-    echo "${FAKE_NODES_READY:-1}"
+    case "$*" in
+      *scalingConfig.desiredSize*) echo "${FAKE_NODES_DESIRED:-1}" ;;
+      *nodegroup.status*)          echo "${FAKE_NG_STATUS:-ACTIVE}" ;;
+      *)                           echo "${FAKE_NODES_DESIRED:-1}" ;;
+    esac
     ;;
   "opensearch describe-domain")
     echo "${FAKE_OS_STATUS:-Active}"

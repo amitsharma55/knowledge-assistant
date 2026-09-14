@@ -23,7 +23,9 @@ module "eks" {
   # Managed EKS add-ons. eks-pod-identity-agent is required for the Pod
   # Identity associations in pod-identity.tf to function.
   addons = {
-    vpc-cni                = {}
+    vpc-cni = {
+      before_compute = true
+    }
     coredns                = {}
     kube-proxy             = {}
     eks-pod-identity-agent = {}
@@ -59,7 +61,8 @@ resource "aws_eks_access_entry" "admin" {
 resource "aws_eks_access_policy_association" "admin" {
   cluster_name  = module.eks.cluster_name
   principal_arn = local.foundation.admin_principal_arn
-  policy_arn    = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSClusterAdminPolicy"
+
+  policy_arn = "arn:${data.aws_partition.current.partition}:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 
   access_scope {
     type = "cluster"

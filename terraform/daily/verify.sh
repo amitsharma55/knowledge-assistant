@@ -31,8 +31,10 @@ status=$(aws eks describe-cluster --name "$cluster" --region "$region" \
   --query 'cluster.status' --output text)
 if [ "$status" = ACTIVE ]; then pass "cluster $cluster is ACTIVE"; else fail "cluster $cluster is $status, want ACTIVE"; fi
 
+# `--output text` returns the addon names tab-separated on one line; split to
+# one-per-line so `grep -qx` can match each exactly.
 installed=$(aws eks list-addons --cluster-name "$cluster" --region "$region" \
-  --query 'addons' --output text)
+  --query 'addons' --output text | tr '\t' '\n')
 for addon in $(out '.verify_expectations.value.expected_addons[]'); do
   if echo "$installed" | grep -qx "$addon"; then
     pass "add-on $addon installed"
@@ -41,16 +43,26 @@ for addon in $(out '.verify_expectations.value.expected_addons[]'); do
   fi
 done
 
-ready=$(aws eks describe-nodegroup --cluster-name "$cluster" --nodegroup-name default \
-  --region "$region" --query 'nodegroup.health.readyCount' --output text)
-if [ "$ready" -ge "$want_nodes" ] 2>/dev/null; then
-  pass "node group has $ready/$want_nodes nodes ready"
+# The module name-prefixes the node group (e.g. default-<hash>), so resolve the
+# real name rather than assuming "default". A managed node group reaches ACTIVE
+# only once its nodes have joined and are Ready; there is no health.readyCount
+# field, so ACTIVE + the configured desired size is the readiness signal.
+ng=$(aws eks list-nodegroups --cluster-name "$cluster" --region "$region" \
+  --query 'nodegroups[0]' --output text)
+ng_status=$(aws eks describe-nodegroup --cluster-name "$cluster" --nodegroup-name "$ng" \
+  --region "$region" --query 'nodegroup.status' --output text)
+desired=$(aws eks describe-nodegroup --cluster-name "$cluster" --nodegroup-name "$ng" \
+  --region "$region" --query 'nodegroup.scalingConfig.desiredSize' --output text)
+if [ "$ng_status" = ACTIVE ] && [ "$desired" -ge "$want_nodes" ] 2>/dev/null; then
+  pass "node group $ng is ACTIVE, desired $desired (>= $want_nodes)"
 else
-  fail "node group has $ready ready, want $want_nodes"
+  fail "node group $ng status=$ng_status desired=$desired, want ACTIVE and >= $want_nodes"
 fi
 
+# DomainProcessingStatus is the human-readable state (Active/Creating/Modifying);
+# DomainStatus.Processing is only a bool, so it can never equal "Active".
 os_status=$(aws opensearch describe-domain --domain-name "$os_domain" --region "$region" \
-  --query 'DomainStatus.Processing' --output text)
+  --query 'DomainStatus.DomainProcessingStatus' --output text)
 if [ "$os_status" = Active ]; then pass "OpenSearch $os_domain is Active"; else fail "OpenSearch $os_domain is $os_status, want Active"; fi
 
 if [ "$failures" -ne 0 ]; then

@@ -42,4 +42,14 @@ if VERIFY_OUTPUTS_JSON=<(printf '%s' "$outputs") \
   exit 1
 fi
 
+echo "== node group not ACTIVE fails"
+if VERIFY_OUTPUTS_JSON=<(printf '%s' "$outputs") \
+  FAKE_CLUSTER_STATUS=ACTIVE FAKE_NG_STATUS=CREATING \
+  FAKE_ADDONS="vpc-cni coredns kube-proxy eks-pod-identity-agent" \
+  FAKE_OS_STATUS=Active \
+  bash "$here/../verify.sh"; then
+  echo "FAIL: verify.sh passed despite the node group not ACTIVE"
+  exit 1
+fi
+
 echo "ALL PASS"
