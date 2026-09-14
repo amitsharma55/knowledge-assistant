@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,5 +41,68 @@ func TestS3PageMapping(t *testing.T) {
 	}
 	if !p.UpdatedAt.Equal(mod) {
 		t.Fatalf("UpdatedAt not carried through")
+	}
+}
+
+func TestParseFrontMatter(t *testing.T) {
+	raw := "---\nurl: https://sf-demo.service-now.com/kb?id=1\nupdated: 2026-08-30\n---\n# AVR Runbook\n\nbody\n"
+	meta, body := parseFrontMatter(raw)
+	if meta["url"] != "https://sf-demo.service-now.com/kb?id=1" {
+		t.Fatalf("url = %q", meta["url"])
+	}
+	if meta["updated"] != "2026-08-30" {
+		t.Fatalf("updated = %q", meta["updated"])
+	}
+	if body != "# AVR Runbook\n\nbody\n" {
+		t.Fatalf("body not stripped to H1: %q", body)
+	}
+}
+
+func TestParseFrontMatterAbsent(t *testing.T) {
+	raw := "# No Front Matter\n\nbody\n"
+	meta, body := parseFrontMatter(raw)
+	if meta != nil {
+		t.Fatalf("meta = %v, want nil", meta)
+	}
+	if body != raw {
+		t.Fatalf("body altered when no front matter present")
+	}
+}
+
+func TestParseFrontMatterUnterminated(t *testing.T) {
+	// A doc that opens with --- but never closes it is treated as having no
+	// front matter, so a stray leading rule is never swallowed.
+	raw := "---\nnot really front matter\n# Title\n"
+	meta, body := parseFrontMatter(raw)
+	if meta != nil || body != raw {
+		t.Fatalf("unterminated block should be a no-op: meta=%v", meta)
+	}
+}
+
+func TestLoadFixturesReadsFrontMatter(t *testing.T) {
+	dir := t.TempDir()
+	doc := "---\nurl: https://sf-demo.coupahost.com/doc/42\nupdated: 2026-08-30\n---\n# AVR Runbook\n\nbody\n"
+	if err := os.WriteFile(filepath.Join(dir, "avr-runbook.md"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pages, err := loadFixtures(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pages) != 1 {
+		t.Fatalf("got %d pages", len(pages))
+	}
+	p := pages[0]
+	if p.WebURL != "https://sf-demo.coupahost.com/doc/42" {
+		t.Fatalf("WebURL = %q", p.WebURL)
+	}
+	if p.Title != "AVR Runbook" {
+		t.Fatalf("Title = %q, want the H1", p.Title)
+	}
+	if strings.Contains(p.Markdown, "url:") {
+		t.Fatalf("front matter leaked into body: %q", p.Markdown)
+	}
+	if !p.UpdatedAt.Equal(time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("UpdatedAt = %v", p.UpdatedAt)
 	}
 }

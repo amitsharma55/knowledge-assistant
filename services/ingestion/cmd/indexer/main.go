@@ -189,20 +189,61 @@ func loadFixtures(dir, space string) ([]page, error) {
 		if err != nil {
 			return nil, err
 		}
+		meta, md := parseFrontMatter(string(body))
 		id := strings.TrimSuffix(e.Name(), ".md")
+		// Citations were indexed with file:// URLs, which read as fake in the
+		// demo; a front-matter url: gives each document a system-native link.
+		webURL := "file://" + filepath.Join(dir, e.Name())
+		if u := meta["url"]; u != "" {
+			webURL = u
+		}
+		updated := time.Now()
+		if d := meta["updated"]; d != "" {
+			if parsed, perr := time.Parse("2006-01-02", d); perr == nil {
+				updated = parsed
+			}
+		}
 		pages = append(pages, page{
 			SpaceKey: space,
 			ID:       id,
 			// Prefer the document's own H1 over the filename slug: the slug
 			// is what citations were showing, so a page headed
-			// "AVR Field Mapping" was cited as "avr field mapping".
-			Title:     chunker.Title(string(body), strings.ReplaceAll(id, "-", " ")),
-			Markdown:  string(body),
-			WebURL:    "file://" + filepath.Join(dir, e.Name()),
-			UpdatedAt: time.Now(),
+			// "AVR Field Mapping" was cited as "avr field mapping". md is the
+			// front-matter-stripped body, so Title/Split/EmbedText never see
+			// the block.
+			Title:     chunker.Title(md, strings.ReplaceAll(id, "-", " ")),
+			Markdown:  md,
+			WebURL:    webURL,
+			UpdatedAt: updated,
 		})
 	}
 	return pages, nil
+}
+
+// parseFrontMatter reads an optional leading "---"-delimited block of simple
+// key: value lines (no nesting, no YAML types) and returns it plus the body
+// with the block removed. A document without a leading "---", or one that
+// opens "---" but never closes it, is returned unchanged with nil meta -- so a
+// stray leading horizontal rule is never mistaken for front matter.
+func parseFrontMatter(raw string) (map[string]string, string) {
+	if !strings.HasPrefix(raw, "---\n") {
+		return nil, raw
+	}
+	rest := raw[len("---\n"):]
+	end := strings.Index(rest, "\n---\n")
+	if end < 0 {
+		return nil, raw
+	}
+	block, body := rest[:end], rest[end+len("\n---\n"):]
+	meta := map[string]string{}
+	for _, line := range strings.Split(block, "\n") {
+		k, v, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		meta[strings.TrimSpace(k)] = strings.TrimSpace(v)
+	}
+	return meta, body
 }
 
 // s3Page maps an S3 object to the ingester's page shape. PageID is the key with
