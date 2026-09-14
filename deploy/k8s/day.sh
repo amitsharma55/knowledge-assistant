@@ -36,10 +36,48 @@ down() {
   echo "daily stack destroyed."
 }
 
+notify() { # <message>
+  local msg="$1"
+  echo "$(date '+%F %T') $msg" >> "$state_dir/reaper.log"
+  [ -n "${KA_NO_NOTIFY:-}" ] && return 0
+  if command -v terminal-notifier >/dev/null 2>&1; then
+    terminal-notifier -title "KA daily reaper" -message "$msg" >/dev/null 2>&1 || true
+  elif command -v osascript >/dev/null 2>&1; then
+    osascript -e "display notification \"$msg\" with title \"KA daily reaper\"" >/dev/null 2>&1 || true
+  fi
+}
+
+keep() {
+  local flag="$state_dir/keep-$(date +%F)"
+  touch "$flag"
+  echo "keep flag set for today ($flag); tonight's reaper will skip teardown."
+}
+
+reap() {
+  if [ -f "$state_dir/keep-$(date +%F)" ]; then
+    notify "daily stack kept for today; skipping teardown."
+    return 0
+  fi
+  local name
+  name="${KA_CLUSTER_NAME:-$(terraform -chdir="$daily" output -raw cluster_name 2>/dev/null || true)}"
+  if [ -z "$name" ]; then
+    notify "no daily cluster name resolvable; nothing to reap."
+    return 0
+  fi
+  if aws eks describe-cluster --name "$name" >/dev/null 2>&1; then
+    notify "daily stack ($name) still up at cutoff; reaping."
+    down
+  else
+    notify "daily cluster ($name) not found; nothing to reap."
+  fi
+}
+
 cmd="${1:-}"
 shift || true
 case "$cmd" in
   up)   up ;;
   down) down ;;
+  reap) reap ;;
+  keep) keep ;;
   *) echo "usage: day.sh [up|down|reap|keep]" >&2; exit 2 ;;
 esac
