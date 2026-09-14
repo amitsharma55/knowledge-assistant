@@ -1,0 +1,21 @@
+# Keep the image build context small and free of secrets. The chat-api and
+# ingestion Dockerfiles COPY the whole context, so anything not excluded here
+# would be shipped to buildkit and baked into the pushed image.
+.git
+.claude
+# Terraform: 800MB+ of provider plugins/modules, plus all the secrets
+# (private.auto.tfvars, backend.hcl). No image needs any of it.
+terraform
+# Local secrets and env
+.env
+.env.*
+# Node/UI build artifacts (the ui image rebuilds these from source)
+**/node_modules
+ui/dist
+# Go build output
+bin
+# Docs and generated deploy overlay — not needed in any image
+docs
+deploy/k8s/.generated
+# Logs / scratch
+*.log

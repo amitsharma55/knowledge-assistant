@@ -13,12 +13,45 @@ daily="$root/terraform/daily"
 state_dir="${KA_STATE_DIR:-$HOME/.ka}"
 mkdir -p "$state_dir"
 
+preflight() {
+  # Fail fast BEFORE launching the background build, so a missing prerequisite
+  # can't leave an orphaned build interleaving with a terraform error.
+  [ -n "${KA_SKIP_PREFLIGHT:-}" ] && return 0
+  local t missing=""
+  for t in docker terraform aws helm kubectl jq make; do
+    command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
+  done
+  if [ -n "$missing" ]; then
+    echo "day.sh: missing required tools:$missing" >&2
+    exit 1
+  fi
+  # The daily stack must be initialized against its S3 backend. That leaves a
+  # .terraform/terraform.tfstate marker; its absence means `terraform apply`
+  # would abort with "Backend initialization required".
+  if [ ! -f "$daily/.terraform/terraform.tfstate" ]; then
+    echo "day.sh: the daily stack is not initialized against its S3 backend." >&2
+    echo "  Set it up once, then re-run 'day.sh up':" >&2
+    echo "    cd $daily" >&2
+    echo "    cp backend.hcl.example backend.hcl              # edit values" >&2
+    echo "    cp private.auto.tfvars.example private.auto.tfvars  # edit values" >&2
+    echo "    terraform init -backend-config=backend.hcl" >&2
+    exit 1
+  fi
+}
+
 up() {
+  preflight
   echo "==> building images ‖ applying the daily stack"
   make -C "$root" images &
   local build_pid=$!
-  terraform -chdir="$daily" apply -auto-approve
-  wait "$build_pid" || { echo "image build failed" >&2; exit 1; }
+  # If apply fails, stop the background build rather than orphaning it.
+  if ! terraform -chdir="$daily" apply -auto-approve; then
+    echo "day.sh: terraform apply failed; stopping the image build" >&2
+    kill "$build_pid" 2>/dev/null || true
+    wait "$build_pid" 2>/dev/null || true
+    exit 1
+  fi
+  if ! wait "$build_pid"; then echo "day.sh: image build failed" >&2; exit 1; fi
 
   echo "==> verifying infrastructure"
   "$daily/verify.sh"

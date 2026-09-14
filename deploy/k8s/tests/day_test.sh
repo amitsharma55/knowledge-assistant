@@ -9,6 +9,7 @@ root=$(cd "$here/../../.." && pwd)
 export PATH="$here/fake-cli:$PATH"
 export KA_STATE_DIR="$(mktemp -d)"
 export KA_NO_NOTIFY=1
+export KA_SKIP_PREFLIGHT=1   # fake env has no real tools / initialized backend
 export DEPLOY_OUTPUTS_JSON="$here/fixture-outputs.json"
 export VERIFY_OUTPUTS_JSON="$here/fixture-outputs.json"
 export KA_TF_OUTPUTS_JSON="$here/fixture-outputs.json"
