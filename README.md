@@ -348,7 +348,8 @@ is rebuilt from it on each bring-up.
     ./verify.sh                                          # after apply
 
 Then deploy the app onto the fresh cluster (needs `helm`; `deploy.sh` sets the
-kubectl context). The images must already be in ECR (built in sub-project 4c):
+kubectl context). The images must already be in ECR (build+push them with
+`make images` — see the one-command lifecycle below):
 
     cd ../..                     # repo root
     deploy/k8s/deploy.sh up      # or: deploy/k8s/deploy.sh up <image-tag>
@@ -365,3 +366,39 @@ destroy hangs on subnet/ENI dependencies:
 
     deploy/k8s/deploy.sh down    # deletes the Ingress (releases the ALB) + workloads
     cd terraform/daily && terraform destroy
+### One-command daily lifecycle (4c)
+
+The steps above are wrapped by a single orchestrator so a normal day is two
+commands, run from the repo root:
+
+    deploy/k8s/day.sh up      # build+push images ‖ terraform apply, verify, deploy, print URL
+    deploy/k8s/day.sh down    # deploy.sh down (release ALB) then terraform destroy
+
+`day.sh up` builds and pushes all three images (`make images`, `linux/amd64`) in
+parallel with `terraform -chdir=terraform/daily apply` — the build hides behind
+OpenSearch creation — then runs `verify.sh` and `deploy.sh up latest`. `day.sh
+down` releases the ALB before destroying the daily stack. Both terraform calls
+use `-auto-approve` and target only the disposable daily stack; foundation (the
+S3 corpus, IAM, ECR, secrets) is never touched.
+
+`make images` builds the three images for `linux/amd64` (the nodes are amd64; a
+laptop is arm64) via `docker buildx` and pushes them to foundation's ECR. It
+reads the registry from the **foundation** stack's outputs, so it works while the
+daily stack is mid-apply.
+
+**Forgotten-teardown safety net (macOS).** So a stack left up overnight does not
+bill continuously:
+
+    deploy/k8s/reaper/install.sh    # LaunchAgent: runs `day.sh reap` at 22:00 local, daily
+    deploy/k8s/reaper/uninstall.sh  # remove it
+    deploy/k8s/day.sh keep          # skip tonight's reaper (late demo)
+
+`day.sh reap` tears the stack down if a live cluster is detected and no keep-flag
+is set for today. Logs and flags live under `~/.ka/` (`reaper.log`, `keep-*`).
+The LaunchAgent runs `day.sh reap` via a login shell so it inherits your AWS
+profile and PATH — a minimal launchd environment is why a fresh install should be
+verified once on your machine.
+
+`make k8s-check` validates all of this offline (no AWS, no cluster): the scripts
+pass `bash -n`/`shellcheck`, and fake-CLI tests assert the build, the up/down
+ordering, and the reaper's decisions.

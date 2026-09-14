@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - UI (`ui/`): `npm --prefix ui test` (Vitest + React Testing Library; tests sit next to the code as `*.test.js[x]`), then a clean `npm --prefix ui run build`. There is no UI lint.
 - Retrieval check: `python3 scripts/check_corpus.py` against a running chat-api (`--id`, `--team`, `--category`, `--exclude-category`, `--scores`, `--validate`). It is not an eval harness: 36 questions, so a 1–2 question swing is noise. Use `/check-retrieval`.
 - Deploy (K8s, `deploy/k8s/`): `make k8s-check` is the offline gate (no AWS, no cluster). `deploy/k8s/deploy.sh up [tag]` brings the app up on the daily EKS cluster (needs `helm` + the 4a stack applied); `deploy/k8s/deploy.sh down` releases the ALB and deletes workloads (run before `terraform destroy`). `deploy/k8s/smoke.sh` checks a live deploy.
+- Daily lifecycle (4c): `deploy/k8s/day.sh up` builds+pushes images ‖ `terraform apply`, verifies, deploys, prints the ALB URL; `deploy/k8s/day.sh down` releases the ALB then destroys the daily stack. `make images` builds all three images for `linux/amd64` and pushes to foundation's ECR. `deploy/k8s/reaper/install.sh` installs the 22:00-local auto-teardown LaunchAgent; `day.sh keep` skips it for a late demo.
 
 ## Gotchas
 
@@ -26,7 +27,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - The 4b ALB (`deploy/k8s/base/ingress.yaml`) routes all traffic to the UI Service; the UI's nginx reverse-proxies `/v1` to chat-api (SSE is tuned there, not at the ALB). Do not add a second Ingress backend for chat-api.
 - The reseed Job runs the distroless indexer image, which has no shell: the three teams run as sequential Pod containers (coupa/star as initContainers, hr as the main container), never a shell loop. Sequential ordering avoids two invocations racing to create the index on a 404.
 - `KA_RELEVANCE_FLOOR` in `deploy/k8s/base/chat-api.yaml` is set to 0.81, calibrated for local nomic-768; it is provisional on Bedrock/Titan-v2. Recalibrate with `/check-retrieval` against the running stack and update the manifest.
-- `deploy/k8s/deploy.sh down` must run before `terraform destroy` on the daily stack: the Ingress owns a real ALB whose ENIs otherwise block subnet deletion (a 4c ordering concern; `down` is the primitive).
+- `deploy/k8s/deploy.sh down` must run before `terraform destroy` on the daily stack: the Ingress owns a real ALB whose ENIs otherwise block subnet deletion (a 4c ordering concern; `down` is the primitive). `deploy/k8s/day.sh down` sequences exactly this: `deploy.sh down` then `terraform destroy`.
+- 4c terraform paths (`day.sh up`/`down`/`reap`) use `-auto-approve` and target only `terraform -chdir=terraform/daily`; foundation is never applied/destroyed. Never point a 4c script at foundation.
+- `make images` reads the ECR registry from the **foundation** stack (`aws_region`, `ecr_repository_urls`), not daily — builds run while the daily stack is mid-apply. Images are `linux/amd64` (nodes are amd64; the laptop is arm64), built via `docker buildx` under emulation, hidden behind OpenSearch creation.
+- The reaper LaunchAgent runs `day.sh reap` via a login shell (`bash -lc`) so it inherits AWS creds/PATH; a minimal launchd environment is why a fresh install must be verified on hardware. Keep-flags and logs live under `~/.ka/`.
 - A dev server started from a Claude session dies when the session ends unless detached (`nohup … & disown`); `/run-local` does this.
 - Team is required on every indexed doc and every request (`X-Team` header; dev identity via `X-Dev-User`) and is never inferred from content or path. Read `docs/superpowers/specs/2026-08-30-team-segregation-design.md` before changing retrieval scoping.
 - `fixtures/` is fabricated demo data. Docs are self-contained `##` sections of under ~800 words, with retrievable facts as bullets, not tables.
