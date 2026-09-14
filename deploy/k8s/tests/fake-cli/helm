@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+echo "helm $*" >> "${KA_TEST_LOG:-/dev/null}"

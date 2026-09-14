@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Fake terraform for offline tests. Logs the call; apply/destroy succeed;
+# output serves the fixture so verify/deploy read canned values.
+echo "terraform $*" >> "${KA_TEST_LOG:-/dev/null}"
+case "$*" in
+  *"output -raw cluster_name"*) echo "ka-daily" ;;
+  *"output -json"*)             cat "${KA_TF_OUTPUTS_JSON:-/dev/null}" ;;
+  *) : ;;
+esac

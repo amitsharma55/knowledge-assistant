@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+echo "kubectl $*" >> "${KA_TEST_LOG:-/dev/null}"
 case "$*" in
   *readyReplicas*)          echo 1 ;;
   *status.succeeded*)       echo 1 ;;

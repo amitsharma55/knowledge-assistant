@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+echo "make $*" >> "${KA_TEST_LOG:-/dev/null}"
+case "$*" in
+  *images*)
+    root=$(cd "$(dirname "$0")/../../../.." && pwd)
+    IMAGES_OUTPUTS_JSON="${IMAGES_OUTPUTS_JSON:-$root/deploy/k8s/tests/images-fixture-outputs.json}" \
+      "$root/deploy/docker/build-push.sh" >/dev/null ;;
+  *) : ;;
+esac

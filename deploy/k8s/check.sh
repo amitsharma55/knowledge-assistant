@@ -18,6 +18,7 @@ echo "PASS bash -n"
 echo "==> overlay render test"; "$here/tests/render_test.sh"
 echo "==> smoke logic test";   "$here/tests/smoke_test.sh"
 echo "==> images build test"; "$here/tests/images_test.sh"
+echo "==> day orchestration test"; "$here/tests/day_test.sh"
 
 if command -v shellcheck >/dev/null 2>&1; then
   echo "==> shellcheck"
