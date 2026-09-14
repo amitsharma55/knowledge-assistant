@@ -7,6 +7,7 @@ import ContextPanel from './components/ContextPanel.jsx';
 import ErrorBanner from './components/ErrorBanner.jsx';
 import { citationTargets, groupCitations } from './citations.js';
 import { listTeams, listChats, getMessages, deleteChat, uploadFile, streamChat } from './api.js';
+import { uuid } from './uuid.js';
 
 export default function App() {
   const [teams, setTeams] = useState([]);
@@ -34,7 +35,7 @@ export default function App() {
   // the answer, or a row in the rail.
   const [activeChunkId, setActiveChunkId] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
-  const sessionId = useRef(crypto.randomUUID());
+  const sessionId = useRef(uuid());
   // streamingRef guards the message-fetch effect during send(). Without it, the
   // `chat` SSE event for a newly-created chat triggers setCurrentChatId, which
   // fires the effect below and re-fetches messages from Postgres — clobbering
@@ -87,7 +88,7 @@ export default function App() {
     setSuggestions([]);
     setError(null);
     setActiveChunkId(null);
-    sessionId.current = crypto.randomUUID();
+    sessionId.current = uuid();
   }
 
   async function onDelete(id) {
