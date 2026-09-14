@@ -78,6 +78,9 @@ override_data {
         "ingestion"         = "arn:aws:iam::123456789012:role/zz-ingestion"
         "aws-lb-controller" = "arn:aws:iam::123456789012:role/zz-lb"
       }
+      acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/zz-app-cert"
+      app_hostname        = "app.example.test"
+      route53_zone_id     = "Z0TEST0ZONE0ID"
     }
   }
 }
@@ -217,5 +220,10 @@ run "pod_identity_bindings" {
   assert {
     condition     = output.ecr_repository_urls["knowledge-assistant/chat-api"] != ""
     error_message = "ecr_repository_urls must expose the chat-api repository URL"
+  }
+
+  assert {
+    condition     = output.app_hostname == "app.example.test" && output.acm_certificate_arn != "" && output.route53_zone_id != ""
+    error_message = "TLS values (hostname, cert ARN, zone) must be passed through from foundation for deploy.sh"
   }
 }

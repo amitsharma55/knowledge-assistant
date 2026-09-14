@@ -33,6 +33,8 @@ render() {
   ingest=$(out '.ecr_repository_urls.value["knowledge-assistant/ingestion"]')
   os=$(out '.opensearch_endpoint.value')
   bucket=$(out '.docs_bucket.value')
+  local cert_arn
+  cert_arn=$(out '.acm_certificate_arn.value')
   mkdir -p "$gen"
   cat > "$gen/kustomization.yaml" <<YAML
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -61,7 +63,61 @@ configMapGenerator:
     options:
       disableNameSuffixHash: true
 YAML
+  # Add the HTTPS listener and cert only when foundation exposes a cert ARN, so
+  # `render` still works against a stack without TLS wired. The base Ingress
+  # stays HTTP-only (keeping `kubectl kustomize base` valid offline); this
+  # JSON6902 patch adds the 443 listener, attaches the cert, and redirects 80.
+  # No host rule / second backend: the ALB matches the cert by SNI and still
+  # routes everything to the UI Service (see the ingress gotcha in CLAUDE.md).
+  if [ -n "$cert_arn" ] && [ "$cert_arn" != null ]; then
+    cat >> "$gen/kustomization.yaml" <<YAML
+patches:
+  - target:
+      kind: Ingress
+      name: ka
+    patch: |-
+      - op: replace
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1listen-ports
+        value: '[{"HTTP":80},{"HTTPS":443}]'
+      - op: add
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1certificate-arn
+        value: $cert_arn
+      - op: add
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1ssl-redirect
+        value: "443"
+YAML
+  fi
   echo "rendered overlay to $gen (tag $tag)"
+}
+
+# Point the app hostname at the freshly created ALB. The ALB's DNS name changes
+# every daily cycle, so this UPSERTs a short-TTL CNAME each bring-up; a CNAME
+# (not an alias A-record) means no canonical-hosted-zone lookup is needed.
+dns_upsert() { # <zone_id> <hostname> <alb-dns-name>
+  aws route53 change-resource-record-sets --hosted-zone-id "$1" --change-batch "$(
+    cat <<JSON
+{"Changes":[{"Action":"UPSERT","ResourceRecordSet":{"Name":"$2","Type":"CNAME","TTL":60,"ResourceRecords":[{"Value":"$3"}]}}]}
+JSON
+  )" >/dev/null
+}
+
+# Remove the app CNAME on teardown so a stale name never points at a dead ALB.
+# Route 53 DELETE must echo the record's current value, so read it back first;
+# if the record is already gone, do nothing.
+dns_delete() { # <zone_id> <hostname>
+  local cur
+  cur=$(aws route53 list-resource-record-sets --hosted-zone-id "$1" \
+    --query "ResourceRecordSets[?Name=='$2.' && Type=='CNAME'].ResourceRecords[0].Value | [0]" \
+    --output text 2>/dev/null || true)
+  if [ -z "$cur" ] || [ "$cur" = None ]; then
+    return 0
+  fi
+  aws route53 change-resource-record-sets --hosted-zone-id "$1" --change-batch "$(
+    cat <<JSON
+{"Changes":[{"Action":"DELETE","ResourceRecordSet":{"Name":"$2","Type":"CNAME","TTL":60,"ResourceRecords":[{"Value":"$cur"}]}}]}
+JSON
+  )" >/dev/null
+  echo "released DNS record $2"
 }
 
 up() {
@@ -69,10 +125,12 @@ up() {
   local outputs
   outputs=$(outputs_json)
   out() { jq -r "$1" <<<"$outputs"; }
-  local cluster region vpc
+  local cluster region vpc app_host zone_id
   cluster=$(out '.cluster_name.value')
   region=$(out '.region.value')
   vpc=$(out '.vpc_id.value')
+  app_host=$(out '.app_hostname.value')
+  zone_id=$(out '.route53_zone_id.value')
 
   aws eks update-kubeconfig --name "$cluster" --region "$region"
 
@@ -114,13 +172,29 @@ up() {
     sleep 5
   done
   if [ -n "$host" ]; then
-    echo "app: http://$host/"
+    if [ -n "$app_host" ] && [ "$app_host" != null ] && [ -n "$zone_id" ] && [ "$zone_id" != null ]; then
+      dns_upsert "$zone_id" "$app_host" "$host"
+      echo "app: https://$app_host/  (ALB: $host)"
+    else
+      echo "app: http://$host/"
+    fi
   else
     echo "ingress has no ALB hostname yet; check: kubectl -n knowledge-assistant get ingress ka"
   fi
 }
 
 down() {
+  local outputs app_host zone_id
+  outputs=$(outputs_json)
+  out() { jq -r "$1" <<<"$outputs"; }
+  app_host=$(out '.app_hostname.value')
+  zone_id=$(out '.route53_zone_id.value')
+  # Release the app CNAME before tearing the ALB down, so nothing resolves to a
+  # dead load balancer between now and the next bring-up.
+  if [ -n "$app_host" ] && [ "$app_host" != null ] && [ -n "$zone_id" ] && [ "$zone_id" != null ]; then
+    dns_delete "$zone_id" "$app_host"
+  fi
+
   # Delete the Ingress FIRST and wait: the controller runs its finalizer, which
   # deletes the real ALB and its ENIs. Skipping this makes 4a's later
   # `terraform destroy` hang on subnet/ENI dependencies. This is the primitive

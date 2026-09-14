@@ -10,6 +10,9 @@
     "knowledge-assistant/ingestion": "123456789012.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/ingestion"
   }},
   "node_group_name": {"value": "default"},
+  "acm_certificate_arn": {"value": "arn:aws:acm:us-east-1:123456789012:certificate/ka-app-cert"},
+  "app_hostname": {"value": "app.knowledge-assistant.click"},
+  "route53_zone_id": {"value": "Z01840071WC900TKY3N8E"},
   "verify_expectations": {"value": {
     "cluster_name": "ka-daily",
     "opensearch_domain": "ka-daily-os",

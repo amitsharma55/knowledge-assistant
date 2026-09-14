@@ -49,3 +49,9 @@ budget_limit_usd               = 50
 budget_time_unit               = "MONTHLY"
 budget_actual_thresholds_pct   = [50, 80, 100]
 budget_forecast_thresholds_pct = [100]
+
+# ---- dns / tls ----
+# Domain registered in Route 53 (its public hosted zone already exists). The
+# app is served over HTTPS at app_hostname; ACM validates against this zone.
+domain_name  = "knowledge-assistant.click"
+app_hostname = "app.knowledge-assistant.click"

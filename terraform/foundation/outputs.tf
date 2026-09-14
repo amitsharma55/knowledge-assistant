@@ -76,3 +76,18 @@ output "verify_expectations" {
     ingestion_model_ids       = var.ingestion_bedrock_model_ids
   }
 }
+
+output "acm_certificate_arn" {
+  description = "Validated ACM certificate for app_hostname; the daily ALB terminates TLS with it."
+  value       = aws_acm_certificate_validation.app.certificate_arn
+}
+
+output "app_hostname" {
+  description = "HTTPS hostname the app is served at; deploy.sh points a Route 53 record at the ALB for it."
+  value       = var.app_hostname
+}
+
+output "route53_zone_id" {
+  description = "Public hosted zone deploy.sh upserts the app record into."
+  value       = data.aws_route53_zone.app.zone_id
+}

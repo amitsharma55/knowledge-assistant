@@ -59,3 +59,18 @@ output "vpc_id" {
   description = "Foundation's VPC id; the ALB controller Helm install needs it."
   value       = local.foundation.vpc_id
 }
+
+output "acm_certificate_arn" {
+  description = "Foundation's validated ACM certificate; deploy.sh renders it onto the ALB Ingress for HTTPS."
+  value       = local.foundation.acm_certificate_arn
+}
+
+output "app_hostname" {
+  description = "Foundation's HTTPS hostname; deploy.sh sets it as the Ingress host and the Route 53 record name."
+  value       = local.foundation.app_hostname
+}
+
+output "route53_zone_id" {
+  description = "Foundation's public hosted zone; deploy.sh upserts the app record into it."
+  value       = local.foundation.route53_zone_id
+}

@@ -43,6 +43,28 @@ mock_provider "aws" {
       arn = "arn:aws:s3:::zz-docs-123456789012"
     }
   }
+
+  override_data {
+    target = data.aws_route53_zone.app
+    values = {
+      zone_id = "Z0TEST0ZONE0ID"
+    }
+  }
+
+  # Fixed so the route53 validation records' for_each key is known at plan time;
+  # a mocked cert otherwise leaves domain_validation_options unknown.
+  override_resource {
+    target = aws_acm_certificate.app
+    values = {
+      arn = "arn:aws:acm:us-east-1:123456789012:certificate/zz-app-cert"
+      domain_validation_options = [{
+        domain_name           = "app.example.test"
+        resource_record_name  = "_val.app.example.test."
+        resource_record_type  = "CNAME"
+        resource_record_value = "_ack.acm-validations.aws."
+      }]
+    }
+  }
 }
 
 variables {
@@ -80,6 +102,10 @@ variables {
   budget_actual_thresholds_pct   = [50, 80, 100]
   budget_forecast_thresholds_pct = [100]
   alert_emails                   = ["alerts@example.test"]
+
+  # dns / tls
+  domain_name  = "example.test"
+  app_hostname = "app.example.test"
 }
 
 run "network_skips_excluded_zones" {
@@ -351,5 +377,10 @@ run "outputs_expose_what_the_daily_stack_and_verify_need" {
   assert {
     condition     = output.verify_expectations.budget_notification_count == 4 && output.verify_expectations.project_tag == "p"
     error_message = "verify_expectations must reflect the tfvars that verify.sh checks against."
+  }
+
+  assert {
+    condition     = output.app_hostname == "app.example.test" && output.route53_zone_id == "Z0TEST0ZONE0ID"
+    error_message = "TLS outputs must expose the app hostname and its hosted zone for deploy.sh."
   }
 }

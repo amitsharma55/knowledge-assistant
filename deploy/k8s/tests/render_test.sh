@@ -17,6 +17,9 @@ check "knowledge-assistant/ingestion:v1.2.3" "ingestion image rewritten"
 check "opensearch_url: https://vpc-ka-abc.us-east-1.es.amazonaws.com" "ka-config opensearch_url set with https scheme"
 check "docs_bucket: ka-docs-123456789012"    "ka-config docs_bucket set"
 check "name: ka-config"                      "ka-config named stably (no hash suffix)"
+check "certificate-arn: arn:aws:acm:us-east-1:123456789012:certificate/ka-app-cert" "ingress carries the ACM cert ARN"
+check '"HTTPS":443'                           "ingress opens the 443 listener"
+check "ssl-redirect: \"443\""                 "ingress redirects HTTP to HTTPS"
 # The generated ConfigMap must land in the app namespace; without the overlay's
 # namespace transformer it would default to `default` and chat-api could not
 # find it. The metadata `name: ka-config` line is immediately followed by the

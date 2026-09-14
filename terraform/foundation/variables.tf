@@ -235,3 +235,18 @@ variable "alert_emails" {
     error_message = "alert_emails must list 1 to 10 valid email addresses."
   }
 }
+
+variable "domain_name" {
+  description = "Registered domain whose Route 53 public hosted zone already exists (created by the registrar). The app's ACM certificate is issued and validated within it."
+  type        = string
+}
+
+variable "app_hostname" {
+  description = "Fully-qualified hostname the app is served at over HTTPS; must be within domain_name. deploy.sh points a Route 53 record at the daily ALB for it."
+  type        = string
+
+  validation {
+    condition     = endswith(var.app_hostname, ".${var.domain_name}")
+    error_message = "app_hostname must be a subdomain of domain_name."
+  }
+}
