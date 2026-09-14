@@ -16,6 +16,7 @@ import (
 	"github.com/example/knowledge-assistant/internal/chunker"
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
+	"github.com/example/knowledge-assistant/internal/osclient"
 	"github.com/example/knowledge-assistant/internal/rag"
 	"github.com/example/knowledge-assistant/internal/rerank"
 	"github.com/example/knowledge-assistant/internal/rewrite"
@@ -61,10 +62,15 @@ func main() {
 		log.Info("preloaded fixtures", "chunks", n, "dir", cfg.FixturesDir)
 		retriever = memStore
 	default:
+		osHTTP, err := osclient.New(context.Background(), cfg.OpenSearchURL, 10*time.Second)
+		if err != nil {
+			log.Error("opensearch client init failed", "err", err)
+			os.Exit(1)
+		}
 		retriever = &opensearch.Client{
 			BaseURL:  cfg.OpenSearchURL,
 			Index:    cfg.OpenSearchIdx,
-			HTTP:     &http.Client{Timeout: 10 * time.Second},
+			HTTP:     osHTTP,
 			Embedder: embedder,
 		}
 		log.Info("using opensearch", "url", cfg.OpenSearchURL, "index", cfg.OpenSearchIdx)
@@ -191,9 +197,14 @@ func main() {
 
 	var uploadIndexer *index.Indexer
 	if cfg.FixturesDir == "" { // real OpenSearch mode
+		osHTTP, err := osclient.New(context.Background(), cfg.OpenSearchURL, 30*time.Second)
+		if err != nil {
+			log.Error("opensearch client init failed", "err", err)
+			os.Exit(1)
+		}
 		uploadIndexer = &index.Indexer{
 			BaseURL: cfg.OpenSearchURL, Index: cfg.OpenSearchIdx,
-			HTTP: &http.Client{Timeout: 30 * time.Second},
+			HTTP: osHTTP,
 		}
 	}
 

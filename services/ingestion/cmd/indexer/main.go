@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/example/knowledge-assistant/internal/chunker"
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
+	"github.com/example/knowledge-assistant/internal/osclient"
 	"github.com/example/knowledge-assistant/internal/team"
 	"github.com/example/knowledge-assistant/services/ingestion/internal/gitlab"
 	"github.com/example/knowledge-assistant/services/ingestion/internal/s3src"
@@ -56,7 +56,12 @@ func main() {
 	}
 	log.Info("using embedder", "mode", embedOpts.Mode, "model", embedOpts.Model, "dim", embedDim)
 
-	idxr := &index.Indexer{BaseURL: *osURL, Index: *osIdx, HTTP: &http.Client{Timeout: 30 * time.Second}}
+	osHTTP, err := osclient.New(ctx, *osURL, 30*time.Second)
+	if err != nil {
+		log.Error("opensearch client init failed", "err", err)
+		os.Exit(1)
+	}
+	idxr := &index.Indexer{BaseURL: *osURL, Index: *osIdx, HTTP: osHTTP}
 	if err := idxr.EnsureIndex(ctx, embedDim); err != nil {
 		log.Error("ensure index failed; refusing to ingest into a stale/invalid index", "err", err)
 		os.Exit(1)
