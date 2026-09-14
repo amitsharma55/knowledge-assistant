@@ -33,10 +33,12 @@ if VERIFY_OUTPUTS_JSON=<(printf '%s' "$outputs") \
 fi
 
 echo "== OpenSearch not active fails"
+# VERIFY_OS_TIMEOUT=0 makes the poll check once and give up, so a domain stuck
+# non-Active fails immediately instead of waiting out the real 5-minute window.
 if VERIFY_OUTPUTS_JSON=<(printf '%s' "$outputs") \
   FAKE_CLUSTER_STATUS=ACTIVE FAKE_NODES_READY=1 \
   FAKE_ADDONS="vpc-cni coredns kube-proxy eks-pod-identity-agent" \
-  FAKE_OS_STATUS=Processing \
+  FAKE_OS_STATUS=Processing VERIFY_OS_TIMEOUT=0 \
   bash "$here/../verify.sh"; then
   echo "FAIL: verify.sh passed despite OpenSearch not Active"
   exit 1

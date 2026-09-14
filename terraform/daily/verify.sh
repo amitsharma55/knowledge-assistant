@@ -61,8 +61,19 @@ fi
 
 # DomainProcessingStatus is the human-readable state (Active/Creating/Modifying);
 # DomainStatus.Processing is only a bool, so it can never equal "Active".
-os_status=$(aws opensearch describe-domain --domain-name "$os_domain" --region "$region" \
-  --query 'DomainStatus.DomainProcessingStatus' --output text)
+# describe-domain can report Creating/Modifying/Processing for well over 13 min
+# after apply returns (domain creation is slow, then the post-create access
+# policy update settles), so poll rather than fail on the first read. The 20-min
+# ceiling covers the observed worst case with margin. Overridable so the test
+# harness can drive a single check (timeout 0) instead of waiting out the poll.
+os_deadline=$((SECONDS + ${VERIFY_OS_TIMEOUT:-1200}))
+while :; do
+  os_status=$(aws opensearch describe-domain --domain-name "$os_domain" --region "$region" \
+    --query 'DomainStatus.DomainProcessingStatus' --output text)
+  if [ "$os_status" = Active ] || [ "$SECONDS" -ge "$os_deadline" ]; then break; fi
+  echo "...   OpenSearch $os_domain is $os_status, waiting up to $((os_deadline - SECONDS))s for Active"
+  sleep "${VERIFY_OS_INTERVAL:-20}"
+done
 if [ "$os_status" = Active ]; then pass "OpenSearch $os_domain is Active"; else fail "OpenSearch $os_domain is $os_status, want Active"; fi
 
 if [ "$failures" -ne 0 ]; then
