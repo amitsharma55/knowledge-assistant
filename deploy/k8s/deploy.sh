@@ -37,6 +37,10 @@ render() {
   cat > "$gen/kustomization.yaml" <<YAML
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+# Stamp the namespace here so it applies to the generated ka-config ConfigMap
+# too; the base manifests carry it in their own metadata, but a generator in
+# this overlay would otherwise land in the default namespace.
+namespace: knowledge-assistant
 resources:
   - ../base
 images:

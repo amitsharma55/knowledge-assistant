@@ -17,5 +17,15 @@ check "knowledge-assistant/ingestion:v1.2.3" "ingestion image rewritten"
 check "opensearch_url: https://vpc-ka-abc.us-east-1.es.amazonaws.com" "ka-config opensearch_url set with https scheme"
 check "docs_bucket: ka-docs-123456789012"    "ka-config docs_bucket set"
 check "name: ka-config"                      "ka-config named stably (no hash suffix)"
+# The generated ConfigMap must land in the app namespace; without the overlay's
+# namespace transformer it would default to `default` and chat-api could not
+# find it. The metadata `name: ka-config` line is immediately followed by the
+# namespace, so a 1-line lookahead pins it (the configMapKeyRef in chat-api is
+# not).
+if grep -A1 'name: ka-config' <<<"$rendered" | grep -q 'namespace: knowledge-assistant'; then
+  echo "PASS  ka-config lands in the knowledge-assistant namespace"
+else
+  echo "FAIL  ka-config not namespaced to knowledge-assistant"; fail=1
+fi
 [ "$fail" -eq 0 ] || { echo "render_test FAILED"; exit 1; }
 echo "render_test passed"
