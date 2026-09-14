@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Fake aws for offline tests. Logs every call; returns canned, verify-friendly
+# values. `eks describe-cluster` existence is controlled by KA_FAKE_CLUSTER.
+echo "aws $*" >> "${KA_TEST_LOG:-/dev/null}"
+case "$*" in
+  *"ecr get-login-password"*)   echo "fake-ecr-password" ;;
+  *"eks describe-cluster"*)
+    if [ "${KA_FAKE_CLUSTER:-live}" = absent ]; then exit 254; fi
+    # verify.sh queries cluster.status; reap only checks exit code.
+    echo ACTIVE ;;
+  *"eks list-addons"*)          printf 'vpc-cni\ncoredns\nkube-proxy\neks-pod-identity-agent\n' ;;
+  *"eks describe-nodegroup"*)   echo 1 ;;
+  *"opensearch describe-domain"*) echo Active ;;
+  *"eks update-kubeconfig"*)    : ;;
+  *) : ;;
+esac

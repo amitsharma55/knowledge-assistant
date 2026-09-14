@@ -12,15 +12,16 @@ kubectl kustomize "$here/base" >/dev/null
 echo "PASS base renders"
 
 echo "==> shell syntax (bash -n)"
-for s in "$here"/*.sh "$here"/tests/*.sh "$here"/tests/fake-cli/*; do bash -n "$s"; done
+for s in "$here"/*.sh "$here"/tests/*.sh "$here"/tests/fake-cli/* "$here"/../docker/build-push.sh; do bash -n "$s"; done
 echo "PASS bash -n"
 
 echo "==> overlay render test"; "$here/tests/render_test.sh"
 echo "==> smoke logic test";   "$here/tests/smoke_test.sh"
+echo "==> images build test"; "$here/tests/images_test.sh"
 
 if command -v shellcheck >/dev/null 2>&1; then
   echo "==> shellcheck"
-  shellcheck "$here"/*.sh "$here"/tests/*.sh "$here"/tests/fake-cli/* && echo "PASS shellcheck"
+  shellcheck "$here"/*.sh "$here"/tests/*.sh "$here"/tests/fake-cli/* "$here"/../docker/build-push.sh && echo "PASS shellcheck"
 else
   echo "skip shellcheck (not installed; brew install shellcheck for a stronger check)"
 fi

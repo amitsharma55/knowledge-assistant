@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down embed-pull reset-index seed seed-s3 run-api run-ingest run-ui test lint tf-check tf-backend k8s-check build
+.PHONY: dev-up dev-down embed-pull reset-index seed seed-s3 run-api run-ingest run-ui test lint tf-check tf-backend k8s-check images build
 
 dev-up:
 	docker compose -f deploy/docker/docker-compose.yml up -d
@@ -81,6 +81,12 @@ tf-backend:
 	printf 'bucket       = "%s"\nkey          = "foundation/terraform.tfstate"\nregion       = "%s"\nuse_lockfile = true\nencrypt      = true\n' \
 		"$$bucket" "$$region" > terraform/foundation/backend.hcl && \
 	echo "Wrote terraform/foundation/backend.hcl (bucket=$$bucket, region=$$region)"
+
+# Owner-run: needs Docker (buildx) + AWS credentials. Builds all three service
+# images for linux/amd64 and pushes them to foundation's ECR, tagged latest.
+# Reads the registry from the foundation stack's outputs.
+images:
+	deploy/docker/build-push.sh
 
 build:
 	CGO_ENABLED=0 go build -o bin/chat-api ./services/chat-api/cmd/server

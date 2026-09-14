@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Fake docker for offline tests. Logs every call; buildx inspect fails so the
+# script exercises the create-builder path; everything else succeeds.
+echo "docker $*" >> "${KA_TEST_LOG:-/dev/null}"
+case "$*" in
+  *"buildx inspect"*) exit 1 ;;
+  *) : ;;
+esac

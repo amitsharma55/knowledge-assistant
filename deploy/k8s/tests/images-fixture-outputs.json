@@ -1,0 +1,8 @@
+{
+  "aws_region": {"value": "us-east-1"},
+  "ecr_repository_urls": {"value": {
+    "knowledge-assistant/chat-api": "123456789012.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/chat-api",
+    "knowledge-assistant/ui": "123456789012.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/ui",
+    "knowledge-assistant/ingestion": "123456789012.dkr.ecr.us-east-1.amazonaws.com/knowledge-assistant/ingestion"
+  }}
+}
