@@ -3,6 +3,9 @@
 # script exercises the create-builder path; everything else succeeds.
 echo "docker $*" >> "${KA_TEST_LOG:-/dev/null}"
 case "$*" in
+  # Real `docker login --password-stdin` reads stdin; drain it so the piped
+  # `aws ecr get-login-password | docker login` doesn't SIGPIPE under pipefail.
+  *login*)            cat >/dev/null 2>&1 || true ;;
   *"buildx inspect"*) exit 1 ;;
   *) : ;;
 esac

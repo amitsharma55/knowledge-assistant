@@ -8,8 +8,14 @@ case "$*" in
     if [ "${KA_FAKE_CLUSTER:-live}" = absent ]; then exit 254; fi
     # verify.sh queries cluster.status; reap only checks exit code.
     echo ACTIVE ;;
-  *"eks list-addons"*)          printf 'vpc-cni\ncoredns\nkube-proxy\neks-pod-identity-agent\n' ;;
-  *"eks describe-nodegroup"*)   echo 1 ;;
+  *"eks list-addons"*)          printf 'vpc-cni\tcoredns\tkube-proxy\teks-pod-identity-agent\n' ;;
+  *"eks list-nodegroups"*)      echo "default-abc123" ;;
+  *"eks describe-nodegroup"*)
+    case "$*" in
+      *scalingConfig.desiredSize*) echo 1 ;;
+      *nodegroup.status*)          echo ACTIVE ;;
+      *)                           echo 1 ;;
+    esac ;;
   *"opensearch describe-domain"*) echo Active ;;
   *"eks update-kubeconfig"*)    : ;;
   *) : ;;

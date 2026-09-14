@@ -83,7 +83,7 @@ up() {
     --set clusterName="$cluster" \
     --set region="$region" \
     --set vpcId="$vpc" \
-    --set serviceAccount.create=false \
+    --set serviceAccount.create=true \
     --set serviceAccount.name=aws-load-balancer-controller
   kubectl -n kube-system rollout status deploy/aws-load-balancer-controller --timeout=180s
 
