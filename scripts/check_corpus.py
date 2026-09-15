@@ -90,7 +90,11 @@ def check(test):
     # whole pool if no chunk carries the flag (older API).
     used = [c for c in chunks if c.get("used")]
     scored = used if used else chunks
-    haystack = "\n".join(c["text"] for c in scored).lower()
+    # Collapse all whitespace before matching: chunk text is hard-wrapped at
+    # ~78 columns, so a multi-word keyword ("certification provider", "company
+    # code") otherwise misses whenever a wrap falls between its words. Keyword
+    # presence must not depend on where a line happens to break.
+    haystack = " ".join(" ".join(c["text"] for c in scored).split()).lower()
     missing = [k for k in test["keywords"] if k.lower() not in haystack]
     forbidden = [k for k in test["anti_keywords"] if k.lower() in haystack]
     top = chunks[0]["score"] if chunks else 0.0
