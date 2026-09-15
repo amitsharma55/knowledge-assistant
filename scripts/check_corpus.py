@@ -81,7 +81,16 @@ def retrieve(test):
 
 def check(test):
     chunks, suggestion = retrieve(test)
-    haystack = "\n".join(c["text"] for c in chunks).lower()
+    # Score the context the model actually receives, not the raw candidate
+    # pool. The orchestrator emits every retrieved chunk marked used /
+    # dropped; only used chunks (selected + backfilled) reach the prompt. A
+    # near-twin the reranker correctly dropped (e.g. the Texas chunk under a
+    # Louisiana query) is still in the pool, and scanning it would fail the
+    # anti_keyword check for content the model never sees. Fall back to the
+    # whole pool if no chunk carries the flag (older API).
+    used = [c for c in chunks if c.get("used")]
+    scored = used if used else chunks
+    haystack = "\n".join(c["text"] for c in scored).lower()
     missing = [k for k in test["keywords"] if k.lower() not in haystack]
     forbidden = [k for k in test["anti_keywords"] if k.lower() in haystack]
     top = chunks[0]["score"] if chunks else 0.0
