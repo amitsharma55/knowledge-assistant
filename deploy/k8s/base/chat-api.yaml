@@ -30,6 +30,11 @@ spec:
             - { name: KA_REWRITE_MODEL, value: "openai.gpt-oss-20b-1:0" }
             # PROVISIONAL: 0.81 is calibrated for local nomic-768. Recalibrate
             # for Titan-v2 with /check-retrieval against the running stack.
+            # Local nomic on the 150-doc corpus (2026-09-15): answerable
+            # questions bottom out at ~0.78 and unanswerable/reject at ~0.76,
+            # so 0.81 sits slightly high locally (flags a couple of answerable
+            # near-twins); ~0.78 separates more cleanly. Titan-v2 value is
+            # still the live-stack recalibration below.
             - { name: KA_RELEVANCE_FLOOR, value: "0.81" }
             - name: KA_OPENSEARCH_URL
               valueFrom: { configMapKeyRef: { name: ka-config, key: opensearch_url } }
