@@ -12,6 +12,19 @@ spec:
       labels: { app: chat-api }
     spec:
       serviceAccountName: chat-api  # EKS Pod Identity: Bedrock + Secrets Manager + OpenSearch
+      initContainers:
+        # chat-api connects to Postgres once at startup and, on failure, runs
+        # permanently without persistence (main.go: "will not persist"). Block
+        # until Postgres accepts connections so repo.New succeeds and schema.sql
+        # runs. Reuses the postgres image (already pulled) for pg_isready.
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command: ["sh", "-c"]
+          args:
+            - |
+              until pg_isready -h postgres -p 5432 -U ka -d ka; do
+                echo "waiting for postgres..."; sleep 2
+              done
       containers:
         - name: chat-api
           image: ka/chat-api:placeholder  # overlay rewrites via images: transformer
@@ -38,6 +51,10 @@ spec:
             - { name: KA_RELEVANCE_FLOOR, value: "0.81" }
             - name: KA_OPENSEARCH_URL
               valueFrom: { configMapKeyRef: { name: ka-config, key: opensearch_url } }
+            # In-cluster ephemeral Postgres (deploy/k8s/base/postgres.yaml).
+            # Chats persist while the stack is up and die with it (emptyDir).
+            - name: KA_POSTGRES_DSN
+              value: postgres://ka:ka@postgres:5432/ka?sslmode=disable
           readinessProbe:
             httpGet: { path: /healthz, port: 8080 }
             initialDelaySeconds: 3

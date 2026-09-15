@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: knowledge-assistant
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # one writer to one emptyDir; never two pods
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_USER,     value: ka }
+            - { name: POSTGRES_PASSWORD, value: ka }
+            - { name: POSTGRES_DB,       value: ka }
+            # Data under a subdir of the mount is the documented-safe placement.
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ containerPort: 5432 }]
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "ka", "-d", "ka"] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec: { command: ["pg_isready", "-U", "ka", "-d", "ka"] }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+      volumes:
+        - name: data
+          emptyDir: {}          # dies with the pod == dies with the stack
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: knowledge-assistant
+spec:
+  selector: { app: postgres }
+  ports:
+    - { port: 5432, targetPort: 5432 }

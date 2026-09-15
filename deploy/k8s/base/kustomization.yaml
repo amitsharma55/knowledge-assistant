@@ -4,6 +4,7 @@ resources:
   - namespace.yaml
   - serviceaccounts.yaml
   - reseed-env.yaml
+  - postgres.yaml
   - chat-api.yaml
   - ui.yaml
   - ingress.yaml
