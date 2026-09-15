@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.icertis.com/docs/contract-integration/overview
+updated: 2026-07-30
+---
 # Icertis Contract Integration
 
 Moves executed contracts from **Icertis CLM** into **Coupa**, so that

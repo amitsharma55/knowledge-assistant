@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.icertis.com/docs/contract-integration/resync-runbook
+updated: 2026-08-27
+---
 # Icertis Resync Runbook
 
 What to do when the Icertis contract integration fails. Most incidents on this

@@ -1,3 +1,7 @@
+---
+url: https://wd5-impl.workday.com/sf_demo/d/org-structure
+updated: 2026-07-28
+---
 # Workday Organization Structure
 
 How the organization is modelled in **Workday**, which is the system of record

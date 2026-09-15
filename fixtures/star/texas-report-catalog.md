@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0020007
+updated: 2026-07-16
+---
 # Texas Report Catalog
 
 The reports the Texas data call produces, in the order they run. Each is a

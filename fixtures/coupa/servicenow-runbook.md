@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0010003
+updated: 2026-09-03
+---
 # ServiceNow Integration Runbook
 
 Operational procedures for both ServiceNow integrations — the product sync

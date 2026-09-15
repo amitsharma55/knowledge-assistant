@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0020001
+updated: 2026-07-25
+---
 # Data Call Pipeline
 
 The shared pipeline behind every state regulatory data call. Each state's data

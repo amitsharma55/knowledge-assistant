@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0030001
+updated: 2026-09-08
+---
 # Leave Policy
 
 Annual leave, carry-over and the other leave types tracked in Workday. Balances

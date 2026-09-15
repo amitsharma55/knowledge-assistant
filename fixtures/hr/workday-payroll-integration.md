@@ -1,3 +1,7 @@
+---
+url: https://wd5-impl.workday.com/sf_demo/d/payroll-integration
+updated: 2026-08-17
+---
 # Workday Payroll Integration
 
 Moves worker, position and compensation data from Workday into the payroll

@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.coupahost.com/middleware/avr/runbook
+updated: 2026-09-01
+---
 # AVR Runbook
 
 What to do when Coupa reports failures reading invoice, purchase order or

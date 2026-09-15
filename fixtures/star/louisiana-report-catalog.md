@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0020004
+updated: 2026-07-11
+---
 # Louisiana Report Catalog
 
 The reports the Louisiana data call produces, in the order they run. Each is a

@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.icertis.com/docs/contract-integration/field-mapping
+updated: 2026-08-11
+---
 # Icertis Field Mapping
 
 Field-level mapping between an Icertis contract record and the Coupa contract

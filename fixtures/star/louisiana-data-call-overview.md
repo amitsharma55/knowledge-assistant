@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0020002
+updated: 2026-08-01
+---
 # Louisiana Data Call
 
 The Louisiana statistical data call, submitted annually to the **Louisiana

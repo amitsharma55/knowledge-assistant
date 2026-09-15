@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0020003
+updated: 2026-08-22
+---
 # Louisiana Processing Rules
 
 The data elements the Louisiana data call collects and the logic applied to

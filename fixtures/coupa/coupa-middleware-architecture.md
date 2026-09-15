@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.coupahost.com/middleware/architecture
+updated: 2026-08-19
+---
 # Coupa AWS Middleware Architecture
 
 How the three Coupa integrations — ServiceNow, Icertis and AVR — fit together

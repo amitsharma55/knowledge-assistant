@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0010002
+updated: 2026-08-08
+---
 # ServiceNow Request Sync
 
 Pulls approved **ServiceNow** request items for purchased product into

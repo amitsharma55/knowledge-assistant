@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.coupahost.com/middleware/avr/field-mapping
+updated: 2026-07-14
+---
 # AVR Field Mapping
 
 Element-by-element translation between the AVR SOAP response and the JSON the

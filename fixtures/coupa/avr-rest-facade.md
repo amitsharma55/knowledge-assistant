@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.coupahost.com/middleware/avr/rest-facade
+updated: 2026-08-03
+---
 # AVR REST Facade
 
 The REST/JSON API that **Coupa** calls to read invoice, purchase order and

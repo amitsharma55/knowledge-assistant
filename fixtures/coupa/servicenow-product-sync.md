@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0010001
+updated: 2026-07-18
+---
 # ServiceNow Product Sync
 
 Pushes purchasable product and catalog items from **Coupa** into the

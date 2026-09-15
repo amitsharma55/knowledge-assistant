@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.coupahost.com/middleware/avr/soap-service
+updated: 2026-07-22
+---
 # AVR SOAP Service
 
 **AVR** is an on-premises application that exposes accounts-payable data —

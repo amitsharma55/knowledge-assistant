@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0020005
+updated: 2026-08-05
+---
 # Texas Data Call
 
 The Texas statistical data call, submitted annually to the **Texas Department

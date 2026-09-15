@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.coupahost.com/middleware/oncall-escalation
+updated: 2026-09-05
+---
 # Coupa Middleware On-Call and Escalation
 
 Who owns the Coupa AWS Middleware integrations, how to reach them, and what is

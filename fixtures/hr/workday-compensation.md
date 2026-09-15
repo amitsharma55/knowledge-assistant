@@ -1,3 +1,7 @@
+---
+url: https://wd5-impl.workday.com/sf_demo/d/compensation
+updated: 2026-08-14
+---
 # Compensation
 
 How compensation is structured in Workday, who can approve a change, and what

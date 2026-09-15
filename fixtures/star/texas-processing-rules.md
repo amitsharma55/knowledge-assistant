@@ -1,3 +1,7 @@
+---
+url: https://sf-demo.service-now.com/kb_view.do?sysparm_article=KB0020006
+updated: 2026-08-29
+---
 # Texas Processing Rules
 
 The data elements the Texas data call collects and the logic applied to them.
