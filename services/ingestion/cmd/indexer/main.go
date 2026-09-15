@@ -193,16 +193,8 @@ func loadFixtures(dir, space string) ([]page, error) {
 		id := strings.TrimSuffix(e.Name(), ".md")
 		// Citations were indexed with file:// URLs, which read as fake in the
 		// demo; a front-matter url: gives each document a system-native link.
-		webURL := "file://" + filepath.Join(dir, e.Name())
-		if u := meta["url"]; u != "" {
-			webURL = u
-		}
-		updated := time.Now()
-		if d := meta["updated"]; d != "" {
-			if parsed, perr := time.Parse("2006-01-02", d); perr == nil {
-				updated = parsed
-			}
-		}
+		webURL, updated := frontMatterOverrides(meta,
+			"file://"+filepath.Join(dir, e.Name()), time.Now())
 		pages = append(pages, page{
 			SpaceKey: space,
 			ID:       id,
@@ -252,14 +244,35 @@ func parseFrontMatter(raw string) (map[string]string, string) {
 func s3Page(bucket, prefix string, d s3src.Doc) page {
 	rel := strings.TrimPrefix(d.Key, prefix)
 	id := strings.TrimSuffix(rel, filepath.Ext(rel))
+	// Parse front matter exactly as the fixtures source does: the deployed
+	// reseed reads from S3, so without this the demo's citation links would be
+	// s3:// keys and the --- block would leak into the first chunk.
+	meta, body := parseFrontMatter(d.Text)
+	webURL, updated := frontMatterOverrides(meta, "s3://"+bucket+"/"+d.Key, d.LastModified)
 	return page{
 		SpaceKey:  "S3",
 		ID:        id,
-		Title:     chunker.Title(d.Text, strings.ReplaceAll(id, "-", " ")),
-		Markdown:  d.Text,
-		WebURL:    "s3://" + bucket + "/" + d.Key,
-		UpdatedAt: d.LastModified,
+		Title:     chunker.Title(body, strings.ReplaceAll(id, "-", " ")),
+		Markdown:  body,
+		WebURL:    webURL,
+		UpdatedAt: updated,
 	}
+}
+
+// frontMatterOverrides applies an optional front-matter url:/updated: over the
+// source's own defaults, so a document carries its real citation link and date
+// whether it came from a fixture file (file://) or an S3 object (s3://). An
+// unparseable date is ignored rather than failing the ingest.
+func frontMatterOverrides(meta map[string]string, url string, updated time.Time) (string, time.Time) {
+	if u := meta["url"]; u != "" {
+		url = u
+	}
+	if d := meta["updated"]; d != "" {
+		if parsed, err := time.Parse("2006-01-02", d); err == nil {
+			updated = parsed
+		}
+	}
+	return url, updated
 }
 
 // docID scopes a document's identity to its team, so byte-identical content

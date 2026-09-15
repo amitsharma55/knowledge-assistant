@@ -106,3 +106,26 @@ func TestLoadFixturesReadsFrontMatter(t *testing.T) {
 		t.Fatalf("UpdatedAt = %v", p.UpdatedAt)
 	}
 }
+
+func TestS3PageReadsFrontMatter(t *testing.T) {
+	mod := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	text := "---\nurl: https://sf-demo.icertis.com/docs/x\nupdated: 2026-08-30\n---\n# Icertis Field Mapping\n\nbody\n"
+	p := s3Page("ka-docs", "coupa/", s3src.Doc{
+		Key:          "coupa/icertis-field-mapping.md",
+		Text:         text,
+		LastModified: mod,
+	})
+	// Front-matter url and date win over the s3:// fallback and object mtime.
+	if p.WebURL != "https://sf-demo.icertis.com/docs/x" {
+		t.Fatalf("WebURL = %q, want the front-matter url", p.WebURL)
+	}
+	if !p.UpdatedAt.Equal(time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("UpdatedAt = %v, want the front-matter date", p.UpdatedAt)
+	}
+	if p.Title != "Icertis Field Mapping" {
+		t.Fatalf("Title = %q, want the H1", p.Title)
+	}
+	if strings.Contains(p.Markdown, "url:") {
+		t.Fatalf("front matter leaked into body: %q", p.Markdown)
+	}
+}
