@@ -13,6 +13,8 @@
 ## Global Constraints
 
 - **The 23 gold docs and all 36 existing rows of `fixtures/tests.jsonl` are frozen.** Gold docs may gain front-matter only; their body content and the existing test rows must not change.
+- **Baseline is 34/36, not 36/36 (measured 2026-09-14).** `check_corpus.py` now scores only the chunks the model actually reads (`used` = selected + backfilled), not the raw candidate pool. The 2 known failures — `star-la-01` and `star-tx-01`, both the "submission deadline" near-twin — are genuine near-twin bleed (the opposite state's deadline chunk is itself selected) and are **flaky by ±1** because the `gpt-oss:20b` reranker is non-deterministic. Accepted as a demonstrable retrieval limit, not a blocker.
+- **Task 3 guardrail is a per-question delta, not an absolute pass count.** No gold question that passes at the batch's start may flip to fail because of a distractor. `star-la-01`/`star-tx-01` flipping is reranker noise, not a distractor regression — re-run to confirm before acting.
 - **No distractor may satisfy a gold question's `keywords`.** A distractor that becomes a true positive corrupts the eval and must be edited or deleted.
 - **Every corpus change is followed by `make seed`** — it drops the index first; chunk doc ids hash chunk text, so stale chunks otherwise rank against fresh ones.
 - **Links are system-native placeholder hosts only**, never a corporate/State Farm wiki: ServiceNow `sf-demo.service-now.com`, Coupa `sf-demo.coupahost.com`, Icertis `sf-demo.icertis.com`, Workday `wd5-impl.workday.com/sf_demo`.
