@@ -12,6 +12,7 @@ is what the corpus tasks need to iterate against.
 """
 import argparse
 import json
+import os
 import pathlib
 import sys
 import urllib.error
@@ -19,7 +20,10 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TESTS = ROOT / "fixtures" / "tests.jsonl"
-API = "http://localhost:8080/v1/chat/messages"
+# Defaults to the local chat-api; override to point at another stack, e.g. a
+# port-forwarded daily chat-api (KA_CHECK_API=http://localhost:8080/... is the
+# same) or the ALB directly for a Titan-v2 floor recalibration.
+API = os.environ.get("KA_CHECK_API", "http://localhost:8080/v1/chat/messages")
 CATEGORIES = {"direct_fact", "spanning", "near_twin", "cross_team",
               "unanswerable", "temporal"}
 TEAMS = {"coupa", "star", "hr"}
