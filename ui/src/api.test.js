@@ -57,3 +57,26 @@ describe('streamChat', () => {
     await expect(collect(streamChat({ message: 'hi' }))).rejects.toThrow('stream failed');
   });
 });
+
+describe('review queue api', () => {
+  it('listPending GETs the admin endpoint with the team header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [{ id: 'x' }] });
+    vi.stubGlobal('fetch', fetchMock);
+    const { listPending } = await import('./api');
+    const items = await listPending('coupa');
+    expect(items).toEqual([{ id: 'x' }]);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/v1/admin/pending');
+    expect(init.headers['X-Team']).toBe('coupa');
+  });
+
+  it('approvePending POSTs to the approve route', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', fetchMock);
+    const { approvePending } = await import('./api');
+    await approvePending('abc', 'coupa');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/v1/admin/pending/abc/approve');
+    expect(init.method).toBe('POST');
+  });
+});

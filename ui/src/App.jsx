@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar.jsx';
 import Thread from './components/Thread.jsx';
 import Composer from './components/Composer.jsx';
 import ContextPanel from './components/ContextPanel.jsx';
+import AdminPanel from './components/AdminPanel.jsx';
 import ErrorBanner from './components/ErrorBanner.jsx';
 import { citationTargets, groupCitations } from './citations.js';
 import { listTeams, listChats, getMessages, deleteChat, uploadFile, streamChat } from './api.js';
@@ -16,6 +17,7 @@ export default function App() {
   const [currentChatId, setCurrentChatId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [uploads, setUploads] = useState([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
   // Three states that used to share one `busy` flag. Conflating them meant an
   // upload put a streaming cursor on the last answer and locked the team
   // switcher, and streaming locked the textarea so the next question could not
@@ -109,7 +111,11 @@ export default function App() {
       const info = await uploadFile(file, sessionId.current, persist, team);
       setUploads(u => [...u, info]);
     } catch (e) {
-      setError(`Could not attach ${file.name}. ${e.message || 'The upload failed.'}`);
+      // The PII gate returns 422 with a user-facing message; show it as-is
+      // rather than wrapping it in a generic attach failure.
+      setError(e.status === 422
+        ? e.message
+        : `Could not attach ${file.name}. ${e.message || 'The upload failed.'}`);
     } finally {
       setUploading(false);
     }
@@ -235,6 +241,8 @@ export default function App() {
         team={team}
         onTeamChange={setTeam}
         streaming={streaming}
+        onToggleReview={() => setReviewOpen(o => !o)}
+        reviewOpen={reviewOpen}
       />
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
       <div className="flex flex-1 min-h-0">
@@ -245,6 +253,12 @@ export default function App() {
           onDelete={onDelete}
         />
         <main className="flex-1 flex flex-col min-w-0">
+          {reviewOpen ? (
+            <div className="flex-1 overflow-y-auto">
+              <AdminPanel team={team} />
+            </div>
+          ) : (
+          <>
           <Thread
             messages={messages}
             streaming={streaming}
@@ -275,6 +289,8 @@ export default function App() {
             uploads={uploads}
             onRemoveUpload={id => setUploads(u => u.filter(x => x.uploadId !== id))}
           />
+          </>
+          )}
         </main>
         <ContextPanel
           chunks={retrieval}

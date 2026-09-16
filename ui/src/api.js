@@ -29,8 +29,32 @@ export async function uploadFile(file, sessionId, persist, team) {
   fd.append('sessionId', sessionId);
   fd.append('persist', persist ? 'true' : 'false');
   const res = await fetch('/v1/uploads', { method: 'POST', headers: headers(team), body: fd });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    // 422 means the PII gate rejected the document; carry the status so the UI
+    // can show the redact-and-retry message rather than a generic failure.
+    const err = new Error(await res.text());
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
+}
+
+// Admin review queue. listPending returns the team's pending uploads; approve
+// promotes one into the index, reject discards it. All are team-scoped.
+export async function listPending(team) {
+  const res = await fetch('/v1/admin/pending', { headers: headers(team) });
+  if (!res.ok) throw new Error('list pending failed');
+  return res.json();
+}
+
+export async function approvePending(id, team) {
+  const res = await fetch(`/v1/admin/pending/${id}/approve`, { method: 'POST', headers: headers(team) });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function rejectPending(id, team) {
+  const res = await fetch(`/v1/admin/pending/${id}/reject`, { method: 'POST', headers: headers(team) });
+  if (!res.ok) throw new Error('reject failed');
 }
 
 // streamChat POSTs a message and yields SSE events one at a time.

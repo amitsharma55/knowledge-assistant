@@ -19,7 +19,7 @@ export default function Composer({ onSend, onUpload, onStop, streaming, uploadin
         <ul className="flex flex-wrap gap-2 mb-2">
           {uploads.map(u => (
             <li key={u.uploadId} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-info-bg text-info border border-info-bg">
-              {u.filename} · {u.chunks} chunks{u.persisted ? ' · saved' : ''}
+              {u.filename} · {u.chunks} chunks{u.status === 'pending_review' ? ' · sent for review' : ''}
               <button
                 onClick={() => onRemoveUpload(u.uploadId)}
                 aria-label={`Remove ${u.filename}`}
@@ -35,7 +35,7 @@ export default function Composer({ onSend, onUpload, onStop, streaming, uploadin
           <input
             ref={fileRef}
             type="file"
-            accept=".pdf,.md,.txt,.markdown"
+            accept=".pdf,.md,.txt,.markdown,.docx,.xlsx"
             className="hidden"
             onChange={e => {
               const f = e.target.files?.[0];
@@ -61,6 +61,11 @@ export default function Composer({ onSend, onUpload, onStop, streaming, uploadin
             />
             Save to KB
           </label>
+          {persist && (
+            <p className="text-[10px] leading-tight text-ink-3 max-w-[7rem] text-center">
+              Don't upload sensitive personal info (SSNs, card numbers).
+            </p>
+          )}
         </div>
         <textarea
           value={text}

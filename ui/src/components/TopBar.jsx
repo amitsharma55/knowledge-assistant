@@ -1,4 +1,4 @@
-export default function TopBar({ title, onNewChat, teams, team, onTeamChange, streaming }) {
+export default function TopBar({ title, onNewChat, teams, team, onTeamChange, streaming, onToggleReview, reviewOpen }) {
   return (
     <header className="h-14 border-b border-rule bg-surface flex items-center px-4 gap-4">
       <div className="flex items-center gap-2 shrink-0">
@@ -22,6 +22,12 @@ export default function TopBar({ title, onNewChat, teams, team, onTeamChange, st
         </select>
       </label>
       <h1 className="flex-1 text-sm text-ink-3 truncate font-normal min-w-0">{title}</h1>
+      <button
+        onClick={onToggleReview}
+        aria-pressed={reviewOpen}
+        className={`shrink-0 px-3 py-1.5 text-sm rounded-md border border-rule-2 hover:bg-surface-2 ${reviewOpen ? 'bg-surface-2 text-ink' : 'text-ink-2'}`}>
+        {reviewOpen ? 'Back to chat' : 'Review queue'}
+      </button>
       <button
         onClick={onNewChat}
         className="shrink-0 px-3 py-1.5 text-sm rounded-md border border-rule-2 hover:bg-surface-2">
