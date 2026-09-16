@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,9 +9,9 @@ import (
 	"time"
 
 	"github.com/example/knowledge-assistant/internal/extract"
-	"github.com/example/knowledge-assistant/internal/index"
 	"github.com/example/knowledge-assistant/internal/ingest"
-	"github.com/example/knowledge-assistant/internal/rag"
+	"github.com/example/knowledge-assistant/internal/pii"
+	"github.com/example/knowledge-assistant/internal/review"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/middleware"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/session"
 	"github.com/google/uuid"
@@ -21,18 +20,20 @@ import (
 const maxUploadSize = 25 << 20 // 25 MB
 
 type UploadHandler struct {
-	Sessions *session.Store // for session-scoped uploads
-	Indexer  *index.Indexer // for persist=true (nil if OpenSearch isn't configured)
-	Embedder rag.Embedder   // used for the persistent path
+	Sessions *session.Store // session-scoped uploads (unchanged)
+	Detector pii.Detector   // scans persist-path uploads before queueing
+	Review   review.Store   // pending queue; admin approval (not upload) indexes
 	Log      *slog.Logger
 }
 
 type uploadResp struct {
-	UploadID  string `json:"uploadId"`
-	Filename  string `json:"filename"`
-	Bytes     int    `json:"bytes"`
-	Chunks    int    `json:"chunks"`
-	Persisted bool   `json:"persisted"`
+	UploadID string        `json:"uploadId"`
+	Filename string        `json:"filename"`
+	Bytes    int           `json:"bytes"`
+	Chunks   int           `json:"chunks,omitempty"`
+	Status   string        `json:"status,omitempty"`
+	ReviewID string        `json:"reviewId,omitempty"`
+	Findings []pii.Finding `json:"findings,omitempty"`
 }
 
 func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -105,24 +106,37 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if persist {
-		if h.Indexer == nil {
-			http.Error(w, "persist requested but no indexer configured", http.StatusServiceUnavailable)
+		// Persisting to the team knowledge base is gated: scan first, hard-block
+		// high-severity PII, and otherwise enqueue for human review. The document
+		// is NOT indexed here — only admin approval promotes it to the index.
+		findings := h.Detector.Scan(text)
+		if pii.HasHigh(findings) {
+			http.Error(w, "this document appears to contain sensitive information "+
+				"(e.g. SSN or card number); remove it and upload again",
+				http.StatusUnprocessableEntity)
 			return
 		}
-		n, err := ingest.Ingest(r.Context(), page, h.Embedder, h.Indexer)
+		reviewID, err := h.Review.Enqueue(r.Context(), review.Item{
+			Team:     scope.Team().Slug(),
+			Uploader: uid,
+			Filename: hdr.Filename,
+			Text:     text,
+			Findings: findings, // low-severity only reaches here
+			Bytes:    len(data),
+		})
 		if err != nil {
-			http.Error(w, fmt.Sprintf("index failed: %v", err), http.StatusBadGateway)
+			http.Error(w, "review enqueue failed", http.StatusInternalServerError)
 			return
 		}
-		if resp.Chunks == 0 {
-			resp.Chunks = n
-		}
-		resp.Persisted = true
+		resp.Status = "pending_review"
+		resp.ReviewID = reviewID
+		resp.Findings = findings
 	}
 
 	h.Log.Info("upload accepted",
 		"id", uploadID, "file", hdr.Filename, "bytes", len(data),
-		"chunks", resp.Chunks, "session", sessionID != "", "persist", persist)
+		"chunks", resp.Chunks, "session", sessionID != "", "persist", persist,
+		"review", resp.ReviewID)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)

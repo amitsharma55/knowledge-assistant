@@ -90,6 +90,15 @@ func ContextWithAllowedForTest(ctx context.Context, allowed []team.Team) context
 	return context.WithValue(ctx, allowedCtxKey{}, allowed)
 }
 
+// ContextWithScopeForTest installs an active scope and user id without running
+// the auth/scope middleware. Test support only: handlers that call
+// ScopeFromContext/UserFromContext can be exercised directly.
+func ContextWithScopeForTest(ctx context.Context, active team.Team, user string) context.Context {
+	ctx = context.WithValue(ctx, userIDKey, user)
+	scope := rag.NewScope(active, []team.Team{active}, nil)
+	return context.WithValue(ctx, scopeCtxKey{}, scope)
+}
+
 func ScopeFromContext(ctx context.Context) (rag.Scope, bool) {
 	s, ok := ctx.Value(scopeCtxKey{}).(rag.Scope)
 	return s, ok && !s.IsZero()
