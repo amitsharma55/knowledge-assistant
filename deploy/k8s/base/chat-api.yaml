@@ -31,6 +31,12 @@ spec:
           ports: [{ containerPort: 8080 }]
           env:
             - { name: KA_LLM_MODE, value: anthropic }
+            # Admin allowlist for the /v1/admin review queue (upload-review
+            # gate). Matched against the caller's user id, which auth still
+            # resolves from X-Dev-User in dev mode (main.go: Auth(true)); the
+            # default is dev@example.com, so that is the demo reviewer here.
+            # Revisit when real JWT auth lands and the id becomes a token claim.
+            - { name: KA_ADMIN_USERS, value: dev@example.com }
             - { name: AWS_REGION, value: us-east-1 }
             # Must match foundation's anthropic_secret_name.
             - { name: KA_ANTHROPIC_SECRET_ID, value: ka/anthropic-api-key }
