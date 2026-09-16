@@ -738,3 +738,96 @@ func TestRetrievalEventExplainsWhyEachChunkWasKeptOrCut(t *testing.T) {
 		t.Errorf("%d chunks marked dropped, want 1", counts["dropped"])
 	}
 }
+
+// countingRetriever records how many times Search was called, so a test can
+// prove the greeting path never touches the index.
+type countingRetriever struct {
+	chunks []Chunk
+	calls  int
+}
+
+func (c *countingRetriever) Search(_ context.Context, _ string, _ Scope, k int) ([]Chunk, error) {
+	c.calls++
+	if k > len(c.chunks) {
+		k = len(c.chunks)
+	}
+	return c.chunks[:k], nil
+}
+
+func answerMessage(t *testing.T, o *Orchestrator, msg string) []StreamEvent {
+	t.Helper()
+	out := make(chan StreamEvent, 64)
+	go func() {
+		if err := o.Answer(context.Background(), msg, nil, fixtureScope(t), nil, out); err != nil {
+			t.Errorf("Answer: %v", err)
+		}
+		close(out)
+	}()
+	var events []StreamEvent
+	for e := range out {
+		events = append(events, e)
+	}
+	return events
+}
+
+func TestGreetingSkipsRetrieval(t *testing.T) {
+	r := &countingRetriever{chunks: sixChunks()}
+	llm := &capturingLLM{}
+	o := &Orchestrator{Retriever: r, LLM: llm, TopK: 6, RerankN: 4}
+
+	answerMessage(t, o, "How are you?")
+
+	if r.calls != 0 {
+		t.Errorf("retriever was called %d times for a greeting; want 0", r.calls)
+	}
+	if llm.prompt.System != conversationalPrompt {
+		t.Errorf("greeting did not use the conversational prompt")
+	}
+	if strings.Contains(llm.prompt.User, "<context>") {
+		t.Errorf("greeting prompt carries a <context> block:\n%s", llm.prompt.User)
+	}
+}
+
+func TestGreetingEmitsNoCitations(t *testing.T) {
+	r := &countingRetriever{chunks: sixChunks()}
+	o := &Orchestrator{Retriever: r, LLM: &capturingLLM{}, TopK: 6, RerankN: 4}
+
+	events := answerMessage(t, o, "thanks so much!")
+
+	var sawDone bool
+	for _, e := range events {
+		switch e.Type {
+		case "citation":
+			if cs := e.Data.([]Chunk); len(cs) != 0 {
+				t.Errorf("greeting cited %d chunks; want 0", len(cs))
+			}
+		case "retrieval":
+			if rc := e.Data.([]RetrievedChunk); len(rc) != 0 {
+				t.Errorf("greeting emitted %d retrieved chunks; want 0", len(rc))
+			}
+		case "done":
+			sawDone = true
+		}
+	}
+	if !sawDone {
+		t.Error("greeting answer never completed")
+	}
+}
+
+func TestRealQuestionStillRetrieves(t *testing.T) {
+	r := &countingRetriever{chunks: sixChunks()}
+	llm := &capturingLLM{}
+	o := &Orchestrator{Retriever: r, LLM: llm, TopK: 6, RerankN: 4}
+
+	answerMessage(t, o, "How do I resend a failed invoice to Coupa?")
+
+	if r.calls == 0 {
+		t.Error("retriever was never called for a real question")
+	}
+	if llm.prompt.System != systemPrompt {
+		t.Errorf("real question did not use the grounded system prompt")
+	}
+	if !strings.Contains(llm.prompt.User, "<context>") {
+		t.Errorf("real-question prompt is missing its <context> block")
+	}
+}

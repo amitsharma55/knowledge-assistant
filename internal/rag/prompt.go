@@ -76,3 +76,20 @@ func BuildPrompt(question string, history []Turn, chunks []Chunk) Prompt {
 	fmt.Fprintf(&b, "Question: %s", question)
 	return Prompt{System: systemPrompt, History: history, User: b.String()}
 }
+
+// conversationalPrompt answers a greeting or pleasantry that was routed away
+// from retrieval by isGreeting: no documents were searched, so there is
+// nothing to ground on and nothing to cite. Only clear small talk reaches
+// here -- a real question the KB doesn't cover still goes through retrieval and
+// gets the grounded prompt's "I don't have that information" refusal -- so this
+// prompt only has to handle a warm reply.
+const conversationalPrompt = `You are a knowledge assistant for internal integrations.
+
+The user has greeted you or made small talk; no documentation was searched. Reply warmly in a sentence or two and invite them to ask about the internal integrations and systems their team documents. Do not invent facts, integrations, or capabilities, and do not apologize.`
+
+// BuildConversationalPrompt returns the model input for a greeting: the message
+// and its history under conversationalPrompt, with no <context> block because
+// retrieval was skipped.
+func BuildConversationalPrompt(question string, history []Turn) Prompt {
+	return Prompt{System: conversationalPrompt, History: history, User: "Question: " + question}
+}

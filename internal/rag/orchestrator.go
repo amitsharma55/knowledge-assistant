@@ -54,6 +54,22 @@ func (o *Orchestrator) logger() *slog.Logger {
 // non-nil, its chunks are included first (user's uploaded doc = explicit
 // intent), then filled with the primary retriever's chunks up to RerankN.
 func (o *Orchestrator) Answer(ctx context.Context, question string, history []Turn, scope Scope, session Retriever, out chan<- StreamEvent) error {
+	// A greeting or pleasantry ("hi", "how are you?", "thanks") gets a warm
+	// reply and no document search: retrieval scores can't tell small talk
+	// from a real question on this embedder, so we gate on the message itself,
+	// before spending an embed + vector search on it. The check is fail-safe
+	// -- anything that isn't clearly small talk falls through to retrieval --
+	// so a real question is never mistaken for a greeting and refused.
+	if isGreeting(question) {
+		out <- StreamEvent{Type: "retrieval", Data: []RetrievedChunk{}}
+		out <- StreamEvent{Type: "citation", Data: []Chunk{}}
+		if err := o.LLM.Stream(ctx, BuildConversationalPrompt(question, history), out); err != nil {
+			return fmt.Errorf("llm: %w", err)
+		}
+		out <- StreamEvent{Type: "done"}
+		return nil
+	}
+
 	// The question the user asked is what the model answers and what the UI
 	// shows. These queries are only ever used to retrieve.
 	queries, rankQuery := o.queries(ctx, question, history)
