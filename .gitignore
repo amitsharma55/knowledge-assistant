@@ -13,6 +13,10 @@ coverage.out
 .idea/
 .claude/settings.local.json
 
+# Python (scripts/check_corpus.py bytecode cache)
+__pycache__/
+*.pyc
+
 # Terraform
 .terraform/
 *.tfstate
