@@ -17,8 +17,10 @@ import (
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
 	"github.com/example/knowledge-assistant/internal/osclient"
+	"github.com/example/knowledge-assistant/internal/pii"
 	"github.com/example/knowledge-assistant/internal/rag"
 	"github.com/example/knowledge-assistant/internal/rerank"
+	"github.com/example/knowledge-assistant/internal/review"
 	"github.com/example/knowledge-assistant/internal/rewrite"
 	"github.com/example/knowledge-assistant/internal/team"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/anthropic"
@@ -194,6 +196,8 @@ func main() {
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 
 	sessions := session.NewStore(embedder, 30*time.Minute)
+	detector := pii.NewRegexDetector()
+	reviewStore := review.NewMemoryStore()
 
 	var uploadIndexer *index.Indexer
 	if cfg.FixturesDir == "" { // real OpenSearch mode
@@ -229,8 +233,18 @@ func main() {
 		Orchestrator: orch, Sessions: sessions, Repo: repository, Log: log,
 	})
 	authed.Method(http.MethodPost, "/v1/uploads", &handler.UploadHandler{
-		Sessions: sessions, Indexer: uploadIndexer, Embedder: embedder, Log: log,
+		Sessions: sessions, Detector: detector, Review: reviewStore, Log: log,
 	})
+
+	// Admin review queue: uploads land here (not the index) and only an admin's
+	// approval promotes them. Gated by the KA_ADMIN_USERS allowlist.
+	adminH := &handler.AdminHandler{
+		Review: reviewStore, Indexer: uploadIndexer, Embedder: embedder, Log: log,
+	}
+	adminAuthed := authed.With(middleware.RequireAdmin(cfg.AdminUsers))
+	adminAuthed.Get("/v1/admin/pending", adminH.List)
+	adminAuthed.Post("/v1/admin/pending/{id}/approve", adminH.Approve)
+	adminAuthed.Post("/v1/admin/pending/{id}/reject", adminH.Reject)
 	if repository != nil {
 		ch := &handler.ChatsHandler{Repo: repository, Log: log}
 		authed.Get("/v1/chats", ch.List)

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -68,6 +69,11 @@ type Config struct {
 	// changing KA_EMBED_MODEL or materially changing the corpus. Absolute
 	// cosine thresholds do not transfer between embedding models.
 	RelevanceFloor float64
+	// AdminUsers gates the /v1/admin review endpoints. Demo authz only: a
+	// comma-separated X-Dev-User allowlist from KA_ADMIN_USERS. Set it to
+	// dev@example.com to make the default dev user the reviewer. Prod replaces
+	// this with a group claim check.
+	AdminUsers []string
 }
 
 func Load() Config {
@@ -101,6 +107,7 @@ func Load() Config {
 		RewriteTimeout: envDuration("KA_REWRITE_TIMEOUT", 20*time.Second),
 		RetrieveMode:   envOr("KA_RETRIEVE_MODE", "single"),
 		RelevanceFloor: envFloat("KA_RELEVANCE_FLOOR", 0.81),
+		AdminUsers:     envList("KA_ADMIN_USERS"),
 	}
 }
 
@@ -136,4 +143,15 @@ func envDuration(k string, d time.Duration) time.Duration {
 		}
 	}
 	return d
+}
+
+// envList splits a comma-separated env var into a trimmed, non-empty slice.
+func envList(k string) []string {
+	var out []string
+	for _, p := range strings.Split(os.Getenv(k), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
