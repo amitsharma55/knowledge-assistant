@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/example/knowledge-assistant/internal/rag"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/middleware"
@@ -146,6 +147,15 @@ func autoTitle(msg string) string {
 // prompt grows on every exchange for context nobody is using.
 const maxHistoryTurns = 6
 
+// maxHistoryBytes caps the size of any single replayed message. maxHistoryTurns
+// bounds how many messages reach the model, not how large any one is: a user
+// who pastes a whole document as one message would otherwise send it verbatim
+// on every following turn, an uncapped spike in prompt size, cost and latency.
+// The rewrite path already caps its input (internal/rewrite); this is the same
+// guard on the answer path. ~4000 bytes keeps a real reply whole while cutting
+// a pasted document down to an orienting excerpt.
+const maxHistoryBytes = 4000
+
 // history loads the conversation so far, oldest first. A failure here costs
 // the follow-up its context, not the answer, so it is logged and dropped --
 // the same call to Answer still runs, just without history.
@@ -158,12 +168,31 @@ func (h *ChatHandler) history(ctx context.Context, uid, team, chatID string) []r
 		h.Log.Warn("load chat history failed; answering without it", "err", err, "chat", chatID)
 		return nil
 	}
+	return historyTurns(msgs)
+}
+
+// historyTurns applies both budgets -- the turn window and the per-message cap
+// -- to loaded messages. Split out from history so it can be tested without a
+// database.
+func historyTurns(msgs []repo.Message) []rag.Turn {
 	if len(msgs) > maxHistoryTurns {
 		msgs = msgs[len(msgs)-maxHistoryTurns:]
 	}
 	out := make([]rag.Turn, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, rag.Turn{Role: m.Role, Content: m.Content})
+		out = append(out, rag.Turn{Role: m.Role, Content: capBytes(m.Content, maxHistoryBytes)})
 	}
 	return out
+}
+
+// capBytes truncates s to at most n bytes, backing up to a UTF-8 rune boundary
+// so the JSON request body stays valid, and marks the cut with an ellipsis.
+func capBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "…"
 }
