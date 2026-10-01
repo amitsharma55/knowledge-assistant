@@ -40,6 +40,11 @@ type Result struct {
 	Overall Metrics
 	ByCat   map[string]Metrics
 	Latency Latency
+	// Fallbacks counts queries where the reranker returned an error or the wrong
+	// chunk count and the pool was kept in dense order. Nonzero means the
+	// reranker did little or nothing -- the signal that hid the Bedrock
+	// no-op, so the runner surfaces it loudly.
+	Fallbacks int
 }
 
 // Run executes the retrieval pipeline over the golden set and returns metrics
@@ -56,6 +61,7 @@ type Result struct {
 func Run(ctx context.Context, entries []Entry, reg *team.Registry, r rag.Retriever, rr rag.Reranker, topK, k int) (raw, reranked Result, err error) {
 	var rawAcc, rrAcc accumulator
 	var rerankTimes []time.Duration
+	var fallbacks int
 	for _, e := range entries {
 		t, perr := reg.Parse(e.Team)
 		if perr != nil {
@@ -71,13 +77,17 @@ func Run(ctx context.Context, entries []Entry, reg *team.Registry, r rag.Retriev
 		rawAcc.add(e, rec, p1, p3, mr, nd)
 
 		start := time.Now()
-		ranked := rerankOrKeep(ctx, rr, e.Query, pool)
+		ranked, fellBack := rerankOrKeep(ctx, rr, e.Query, pool)
 		rerankTimes = append(rerankTimes, time.Since(start))
+		if fellBack {
+			fallbacks++
+		}
 		rec, p1, p3, mr, nd = metricsFor(e, ranked, k)
 		rrAcc.add(e, rec, p1, p3, mr, nd)
 	}
 	reranked = rrAcc.result()
 	reranked.Latency = percentiles(rerankTimes)
+	reranked.Fallbacks = fallbacks
 	return rawAcc.result(), reranked, nil
 }
 
@@ -103,16 +113,18 @@ func percentiles(ds []time.Duration) Latency {
 
 // rerankOrKeep reorders the pool, falling back to retrieval order on any failure
 // or count mismatch -- the same contract as Orchestrator.reranked, so the
-// harness measures what production would actually serve.
-func rerankOrKeep(ctx context.Context, rr rag.Reranker, query string, chunks []rag.Chunk) []rag.Chunk {
+// harness measures what production would actually serve. fellBack reports that a
+// fallback happened (reranker present but unusable), so the runner can surface a
+// no-op reranker instead of reporting a silent zero delta.
+func rerankOrKeep(ctx context.Context, rr rag.Reranker, query string, chunks []rag.Chunk) (ranked []rag.Chunk, fellBack bool) {
 	if rr == nil || len(chunks) < 2 {
-		return chunks
+		return chunks, false
 	}
 	out, err := rr.Rerank(ctx, query, chunks)
 	if err != nil || len(out) != len(chunks) {
-		return chunks
+		return chunks, true
 	}
-	return out
+	return out, false
 }
 
 // metricsFor scores one entry's ranked chunk list. Recall and NDCG are at K;

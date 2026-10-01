@@ -3,6 +3,7 @@ package rerank
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/example/knowledge-assistant/internal/rag"
@@ -27,25 +28,59 @@ func buildRerankPrompt(query string, chunks []rag.Chunk) string {
 	return u.String()
 }
 
-// parseOrder reads {"order":[ints]} out of a model reply, tolerating any
-// reasoning text around the JSON object. Ollama's structured output returns
-// clean JSON; Bedrock's Converse may wrap it in prose, so extraction is done
-// here rather than relying on the transport.
+// parseOrder reads the ranking out of a model reply.
+//
+// Preferred form is {"order":[ints]}, tolerating reasoning text around it:
+// Ollama's structured output guarantees that shape. Bedrock's Converse has no
+// such enforcement, and gpt-oss there replies with a bare list -- "2, 1, 3" --
+// which has no JSON object at all. That parsed as an error and fell back to
+// dense order on every call, silently costing all reranking, so a bare integer
+// list is now accepted too.
+//
+// The bare-list path is deliberately strict: it accepts a reply that is nothing
+// but integers and separators, and refuses one that also contains prose rather
+// than guess ids out of a sentence. A refusal surfaces as a loud fallback (see
+// the reranker callers); if that starts happening, enforce structured output on
+// Bedrock instead of loosening this further.
 func parseOrder(content string) ([]int, error) {
-	obj, err := extractJSONObject(content)
-	if err != nil {
-		return nil, fmt.Errorf("rerank: decode ranking %q: %w", truncate(content, 200), err)
+	if obj, err := extractJSONObject(content); err == nil {
+		var ranking struct {
+			Order []int `json:"order"`
+		}
+		if err := json.Unmarshal([]byte(obj), &ranking); err == nil && len(ranking.Order) > 0 {
+			return ranking.Order, nil
+		}
 	}
-	var ranking struct {
-		Order []int `json:"order"`
+	if ids := looseInts(content); len(ids) > 0 {
+		return ids, nil
 	}
-	if err := json.Unmarshal([]byte(obj), &ranking); err != nil {
-		return nil, fmt.Errorf("rerank: decode ranking %q: %w", truncate(content, 200), err)
+	return nil, fmt.Errorf("rerank: no ranking in reply %q", truncate(content, 200))
+}
+
+// looseInts parses a reply that is nothing but a list of integers, e.g.
+// "2, 1, 3" or "[2,1,3]". It returns nil the moment any token is not an integer,
+// so prose around the numbers is refused rather than mined for ids.
+func looseInts(s string) []int {
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		switch r {
+		case ',', ' ', '\t', '\n', '\r', '[', ']':
+			return true
+		default:
+			return false
+		}
+	})
+	if len(fields) == 0 {
+		return nil
 	}
-	if len(ranking.Order) == 0 {
-		return nil, fmt.Errorf("rerank: model returned an empty ranking")
+	out := make([]int, 0, len(fields))
+	for _, f := range fields {
+		n, err := strconv.Atoi(f)
+		if err != nil {
+			return nil
+		}
+		out = append(out, n)
 	}
-	return ranking.Order, nil
+	return out
 }
 
 // extractJSONObject returns the substring from the first '{' to the last '}'.

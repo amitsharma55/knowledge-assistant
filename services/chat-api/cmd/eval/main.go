@@ -215,6 +215,13 @@ func printStage2(off eval.Result, on *eval.Result, k int, mode string) {
 	writeCompareRow(w, "overall", off.Overall, on.Overall)
 	w.Flush()
 
+	if on.Fallbacks > 0 {
+		fmt.Printf("\n⚠  reranker fell back to dense order on %d/%d queries — it returned an error or the\n"+
+			"   wrong chunk count, so its ranking was discarded. A near-zero NDCG delta above is\n"+
+			"   this, not a weak reranker. Check the model id, the backend, and parseOrder.\n",
+			on.Fallbacks, on.Overall.Queries)
+	}
+
 	l := on.Latency
 	fmt.Printf("\nRerank latency (per query, listwise one round-trip): p50 %s  p95 %s  p99 %s  max %s  (n=%d)\n",
 		round(l.P50), round(l.P95), round(l.P99), round(l.Max), l.N)
