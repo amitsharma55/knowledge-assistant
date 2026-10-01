@@ -43,14 +43,14 @@ spec:
             - { name: KA_EMBED_MODE, value: bedrock }
             - { name: KA_EMBED_MODEL, value: "amazon.titan-embed-text-v2:0" }
             - { name: KA_EMBED_DIM, value: "1024" }
-            # Gated OFF pending the rerank A/B decision. It was set to "bedrock",
-            # but the Bedrock reranker was silently falling back to dense order on
-            # every call (a JSON parse mismatch, now fixed), so rerank has in fact
-            # been a no-op in prod. Keeping it off makes that explicit: behaviour
-            # is unchanged (dense order), and turning rerank on -- set this back to
-            # "bedrock" -- stays a deliberate, measured decision, not a side effect
-            # of the parse fix. The model id is kept ready for that flip.
-            - { name: KA_RERANK_MODE, value: "off" }
+            # Reranking ON: gpt-oss-20b on Bedrock reorders the retrieval pool,
+            # which fixes the near-twin case (NDCG 0.631 -> 1.000 in eval) at
+            # ~1s/query p50. Bedrock Converse access to this model is already in use
+            # for query rewrite, so no extra IAM is needed. If Bedrock is
+            # unreachable the reranker degrades to dense order with a WARN, so an
+            # outage cannot fail answers. Set to "off" to disable. Local dev uses
+            # ollama via .env; the two never share config.
+            - { name: KA_RERANK_MODE, value: "bedrock" }
             - { name: KA_RERANK_MODEL, value: "openai.gpt-oss-20b-1:0" }
             - { name: KA_REWRITE_MODE, value: bedrock }
             - { name: KA_REWRITE_MODEL, value: "openai.gpt-oss-20b-1:0" }
