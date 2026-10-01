@@ -27,3 +27,6 @@ plan.txt
 private.auto.tfvars
 backend.hcl
 deploy/k8s/.generated/
+
+# Generated graphify knowledge-graph output (regenerable; 1.3MB+ html + cache).
+graphify-out/
