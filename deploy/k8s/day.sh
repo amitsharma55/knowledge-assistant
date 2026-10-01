@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # day.sh sequences the disposable daily stack across the 4a (terraform) and 4b
 # (deploy.sh) layers so the owner runs one command per bookend.
-#   day.sh up     build images ‖ terraform apply, verify, deploy, print URL
+#   day.sh up     build images, terraform apply, verify, deploy, print URL
 #   day.sh down   deploy.sh down (release ALB), then terraform destroy
 # terraform runs with -auto-approve on every path: only the disposable daily
 # stack is ever touched; the corpus lives in foundation's S3.
@@ -14,8 +14,8 @@ state_dir="${KA_STATE_DIR:-$HOME/.ka}"
 mkdir -p "$state_dir"
 
 preflight() {
-  # Fail fast BEFORE launching the background build, so a missing prerequisite
-  # can't leave an orphaned build interleaving with a terraform error.
+  # Fail fast before the build, so a missing prerequisite surfaces immediately
+  # rather than after a slow emulated build.
   [ -n "${KA_SKIP_PREFLIGHT:-}" ] && return 0
   local t missing=""
   for t in docker terraform aws helm kubectl jq make; do
@@ -41,17 +41,21 @@ preflight() {
 
 up() {
   preflight
-  echo "==> building images ‖ applying the daily stack"
-  make -C "$root" images &
-  local build_pid=$!
-  # If apply fails, stop the background build rather than orphaning it.
-  if ! terraform -chdir="$daily" apply -auto-approve; then
-    echo "day.sh: terraform apply failed; stopping the image build" >&2
-    kill "$build_pid" 2>/dev/null || true
-    wait "$build_pid" 2>/dev/null || true
+  # Build images BEFORE apply, not concurrently. The emulated linux/amd64 build
+  # (QEMU on the arm64 laptop) raced terraform apply for the machine and lost
+  # under a full fresh apply, failing the whole `up` after the stack was already
+  # created and billing. Serial costs the (usually cached) build time up front
+  # but cannot flake against apply. Tee to a log so a failure is never invisible.
+  local build_log="$state_dir/images-build.log"
+  echo "==> building images (log: $build_log)"
+  if ! make -C "$root" images 2>&1 | tee "$build_log"; then
+    echo "day.sh: image build failed; last 20 lines:" >&2
+    tail -n 20 "$build_log" >&2
     exit 1
   fi
-  if ! wait "$build_pid"; then echo "day.sh: image build failed" >&2; exit 1; fi
+
+  echo "==> applying the daily stack"
+  terraform -chdir="$daily" apply -auto-approve
 
   echo "==> verifying infrastructure"
   "$daily/verify.sh"
