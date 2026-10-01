@@ -1,0 +1,67 @@
+[
+  {
+    "id": "lt-avr-timeout-middleware",
+    "query": "What does the AVR middleware return when the SOAP call to AVR times out?",
+    "team": "coupa",
+    "category": "literal_token",
+    "relevant": [
+      { "pageId": "avr-rest-facade", "section": "Timeouts and errors", "grade": 2 },
+      { "pageId": "avr-runbook", "section": "AVR-TIMEOUT", "grade": 1 }
+    ]
+  },
+  {
+    "id": "lt-avr-timeout-cause",
+    "query": "What causes an AVR-TIMEOUT error and how should it be handled?",
+    "team": "coupa",
+    "category": "literal_token",
+    "relevant": [
+      { "pageId": "avr-runbook", "section": "AVR-TIMEOUT", "grade": 2 },
+      { "pageId": "avr-rest-facade", "section": "Timeouts and errors", "grade": 1 }
+    ]
+  },
+  {
+    "id": "nt-louisiana-required-elements",
+    "query": "What are the required data elements for the Louisiana processing rules?",
+    "team": "star",
+    "category": "near_twin",
+    "relevant": [
+      { "pageId": "louisiana-processing-rules", "section": "Required data elements", "grade": 2 }
+    ]
+  },
+  {
+    "id": "nt-texas-validation-rules",
+    "query": "What are the validation rules for Texas data call processing?",
+    "team": "star",
+    "category": "near_twin",
+    "relevant": [
+      { "pageId": "texas-processing-rules", "section": "Validation rules", "grade": 2 }
+    ]
+  },
+  {
+    "id": "nm-servicenow-product-fields",
+    "query": "Which fields does the ServiceNow product sync send from Coupa?",
+    "team": "coupa",
+    "category": "normal",
+    "relevant": [
+      { "pageId": "servicenow-product-sync", "section": "Fields sent to ServiceNow", "grade": 2 }
+    ]
+  },
+  {
+    "id": "nm-401k-match",
+    "query": "What is the company 401(k) match?",
+    "team": "hr",
+    "category": "normal",
+    "relevant": [
+      { "pageId": "hr-401k-plan", "section": "Match", "grade": 2 }
+    ]
+  },
+  {
+    "id": "nm-data-call-sla-targets",
+    "query": "What are the data call SLA targets?",
+    "team": "star",
+    "category": "normal",
+    "relevant": [
+      { "pageId": "data-call-sla", "section": "Targets", "grade": 2 }
+    ]
+  }
+]
