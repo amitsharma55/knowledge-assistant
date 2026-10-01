@@ -123,6 +123,7 @@ func main() {
 		MaxContext:     cfg.MaxContext,
 		RelevanceFloor: cfg.RelevanceFloor,
 		Log:            log,
+		Trace:          cfg.Trace,
 	}
 	if c, ok := retriever.(rag.Counter); ok {
 		orch.Counter = c

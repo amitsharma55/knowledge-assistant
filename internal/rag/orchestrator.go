@@ -41,6 +41,11 @@ type Orchestrator struct {
 	// answer, such as a failed session retrieval. Optional; nil disables
 	// logging (falls back to slog.Default()).
 	Log *slog.Logger
+	// Trace logs per-query pipeline detail: every retrieved chunk with its
+	// score and a text snippet, the order after reranking, and the full
+	// system and user prompt sent to the model. Verbose by design; off unless
+	// an operator is watching a query go through (KA_TRACE).
+	Trace bool
 }
 
 func (o *Orchestrator) logger() *slog.Logger {
@@ -48,6 +53,39 @@ func (o *Orchestrator) logger() *slog.Logger {
 		return o.Log
 	}
 	return slog.Default()
+}
+
+// traceChunks logs each chunk in order with its score and a text snippet, so an
+// operator can watch exactly what retrieval returned and how the reranker
+// reordered it. No-op unless Trace is on.
+func (o *Orchestrator) traceChunks(label string, chunks []Chunk) {
+	if !o.Trace {
+		return
+	}
+	for i, c := range chunks {
+		o.logger().Info("trace: "+label, "rank", i+1, "id", c.ID,
+			"score", c.Score, "section", c.SectionPath, "text", snippet(c.Text, 200))
+	}
+}
+
+// tracePrompt logs the full system and user prompt sent to the model. The user
+// prompt holds the <context> blocks, so this is the exact grounding the answer
+// is built from. No-op unless Trace is on.
+func (o *Orchestrator) tracePrompt(p Prompt) {
+	if !o.Trace {
+		return
+	}
+	o.logger().Info("trace: prompt", "system", p.System, "user", p.User)
+}
+
+// snippet collapses whitespace and cuts to at most n runes for a log line.
+func snippet(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 // Answer runs the full retrieve → prompt → stream pipeline. If `session` is
@@ -61,9 +99,12 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, history []Tu
 	// -- anything that isn't clearly small talk falls through to retrieval --
 	// so a real question is never mistaken for a greeting and refused.
 	if isGreeting(question) {
+		o.logger().Info("greeting; skipping retrieval", "q", question)
 		out <- StreamEvent{Type: "retrieval", Data: []RetrievedChunk{}}
 		out <- StreamEvent{Type: "citation", Data: []Chunk{}}
-		if err := o.LLM.Stream(ctx, BuildConversationalPrompt(question, history), out); err != nil {
+		greetPrompt := BuildConversationalPrompt(question, history)
+		o.tracePrompt(greetPrompt)
+		if err := o.LLM.Stream(ctx, greetPrompt, out); err != nil {
 			return fmt.Errorf("llm: %w", err)
 		}
 		out <- StreamEvent{Type: "done"}
@@ -88,6 +129,7 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, history []Tu
 			// request the way a primary retriever error does.
 			o.logger().Warn("session retriever failed; continuing without uploaded-doc grounding", "err", err)
 		} else {
+			o.logger().Info("session chunks", "n", len(sc))
 			for _, c := range sc {
 				if _, dup := seenAll[c.ID]; !dup {
 					seenAll[c.ID] = struct{}{}
@@ -114,7 +156,10 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, history []Tu
 	if err != nil {
 		return fmt.Errorf("retrieve: %w", err)
 	}
+	o.logger().Info("retrieved from KB", "pool", len(kb), "topk", o.TopK)
+	o.traceChunks("retrieved", kb)
 	kb = o.reranked(ctx, rankQuery, kb)
+	o.traceChunks("reranked", kb)
 	for _, c := range kb {
 		if _, dup := seenAll[c.ID]; !dup {
 			seenAll[c.ID] = struct{}{}
@@ -148,10 +193,14 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, history []Tu
 
 	selected := len(chosen)
 	chosen = backfillSiblings(chosen, all, o.maxContext())
+	o.logger().Info("context assembled; streaming answer",
+		"retrieved", len(all), "selected", selected,
+		"backfilled", len(chosen)-selected, "used", len(chosen))
 
 	out <- StreamEvent{Type: "retrieval", Data: mark(all, chosen, selected)}
 	out <- StreamEvent{Type: "citation", Data: chosen}
 	prompt := BuildPrompt(question, history, chosen)
+	o.tracePrompt(prompt)
 	if err := o.LLM.Stream(ctx, prompt, out); err != nil {
 		return fmt.Errorf("llm: %w", err)
 	}
@@ -252,6 +301,7 @@ func (o *Orchestrator) reranked(ctx context.Context, question string, chunks []C
 			"in", len(chunks), "out", len(ranked))
 		return chunks
 	}
+	o.logger().Info("reranked pool", "n", len(ranked))
 	return ranked
 }
 

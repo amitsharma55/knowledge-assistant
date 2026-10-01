@@ -55,6 +55,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := middleware.UserFromContext(r.Context())
+	h.Log.Info("chat query", "team", scope.Team().Slug(), "user", uid, "q", req.Message)
 
 	// Ensure a persistent chat exists. Auto-title from first message.
 	var chat repo.Chat

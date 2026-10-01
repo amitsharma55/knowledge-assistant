@@ -74,6 +74,12 @@ type Config struct {
 	// dev@example.com to make the default dev user the reviewer. Prod replaces
 	// this with a group claim check.
 	AdminUsers []string
+	// Trace turns on per-query pipeline detail in the log: every retrieved
+	// chunk with its score and a text snippet, the order after reranking, and
+	// the full system and user prompt sent to the model. Verbose by design --
+	// one line per chunk plus the whole prompt -- so it is off unless an
+	// operator is watching a query go through. KA_TRACE=1.
+	Trace bool
 }
 
 func Load() Config {
@@ -108,7 +114,17 @@ func Load() Config {
 		RetrieveMode:   envOr("KA_RETRIEVE_MODE", "single"),
 		RelevanceFloor: envFloat("KA_RELEVANCE_FLOOR", 0.81),
 		AdminUsers:     envList("KA_ADMIN_USERS"),
+		Trace:          envBool("KA_TRACE", false),
 	}
+}
+
+func envBool(k string, d bool) bool {
+	if v := os.Getenv(k); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
+	}
+	return d
 }
 
 func envOr(k, d string) string {
