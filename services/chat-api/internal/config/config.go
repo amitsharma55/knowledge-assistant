@@ -69,6 +69,11 @@ type Config struct {
 	// changing KA_EMBED_MODEL or materially changing the corpus. Absolute
 	// cosine thresholds do not transfer between embedding models.
 	RelevanceFloor float64
+	// QueryLogBucket, when set, turns on query capture: every answered query
+	// (with its below-floor flag) is written to this S3 bucket for offline
+	// golden-set mining. Empty disables it, so local/fixtures mode and any
+	// deploy without the bucket are unaffected and need no AWS credentials.
+	QueryLogBucket string
 	// AdminUsers gates the /v1/admin review endpoints. Demo authz only: a
 	// comma-separated X-Dev-User allowlist from KA_ADMIN_USERS. Set it to
 	// dev@example.com to make the default dev user the reviewer. Prod replaces
@@ -113,6 +118,7 @@ func Load() Config {
 		RewriteTimeout: envDuration("KA_REWRITE_TIMEOUT", 20*time.Second),
 		RetrieveMode:   envOr("KA_RETRIEVE_MODE", "single"),
 		RelevanceFloor: envFloat("KA_RELEVANCE_FLOOR", 0.81),
+		QueryLogBucket: os.Getenv("KA_QUERYLOG_BUCKET"),
 		AdminUsers:     envList("KA_ADMIN_USERS"),
 		Trace:          envBool("KA_TRACE", false),
 	}

@@ -33,6 +33,24 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
     }
   }
 
+  # Current-object expiration, only when a retention limit is set. Buckets that
+  # leave object_expiration_days at 0 (the durable stores) get no such rule and
+  # keep their objects. This is how the query log enforces a retention window on
+  # user-query PII rather than keeping it forever.
+  dynamic "rule" {
+    for_each = var.object_expiration_days > 0 ? [1] : []
+    content {
+      id     = "expire-current-objects"
+      status = "Enabled"
+
+      filter {}
+
+      expiration {
+        days = var.object_expiration_days
+      }
+    }
+  }
+
   # A lifecycle rule on noncurrent versions needs versioning in place first.
   depends_on = [aws_s3_bucket_versioning.this]
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/example/knowledge-assistant/services/chat-api/internal/handler"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/middleware"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/opensearch"
+	"github.com/example/knowledge-assistant/services/chat-api/internal/querylog"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/repo"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/secrets"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/session"
@@ -127,6 +128,19 @@ func main() {
 	}
 	if c, ok := retriever.(rag.Counter); ok {
 		orch.Counter = c
+	}
+	// Query capture is opt-in via KA_QUERYLOG_BUCKET and needs AWS creds, so it
+	// stays off for local/fixtures runs. The chat-api role must allow
+	// s3:PutObject on the bucket for this to succeed (captures that fail are
+	// logged, never fatal -- see querylog.S3.Record).
+	if cfg.QueryLogBucket != "" {
+		s3c, err := awsx.S3(context.Background())
+		if err != nil {
+			log.Error("query capture: s3 client", "err", err)
+			os.Exit(1)
+		}
+		orch.QueryLog = &querylog.S3{Client: s3c, Bucket: cfg.QueryLogBucket, Prefix: "querylog", Log: log}
+		log.Info("query capture enabled", "bucket", cfg.QueryLogBucket)
 	}
 	switch cfg.RerankMode {
 	case "ollama":

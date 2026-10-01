@@ -106,3 +106,27 @@ type TeamSuggestion struct {
 	Team    string `json:"team"`
 	Matches int    `json:"matches"`
 }
+
+// QueryLog captures an answered query for offline analysis -- specifically, to
+// build the retrieval eval golden set from real traffic rather than hand-authored
+// guesses. The below-floor queries (nothing relevant found here) are our true
+// recall failures and the only honest test of whether hybrid retrieval would
+// help, so BelowFloor is the field that matters most.
+//
+// Optional; nil disables capture. Implementations MUST NOT block or fail the
+// answer -- a capture miss is strictly less bad than a slow or failed response,
+// so Record swallows its own errors and returns immediately.
+type QueryLog interface {
+	Record(ctx context.Context, rec QueryRecord)
+}
+
+// QueryRecord is one answered query. It omits the user id on purpose: the golden
+// set needs the question and whether retrieval found anything, not who asked.
+// Rewritten is the query actually ranked (equal to Question when not rewritten).
+type QueryRecord struct {
+	Team        string
+	Question    string
+	Rewritten   string
+	BelowFloor  bool
+	Suggestions []string // other-team slugs suggested; empty when none
+}

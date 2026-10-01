@@ -21,6 +21,10 @@ type Orchestrator struct {
 	// Rewriter makes a follow-up self-contained before it is used as a
 	// search query. Optional; nil retrieves on the user's literal words.
 	Rewriter Rewriter
+	// QueryLog captures each answered query (and whether it fell below the
+	// relevance floor) for offline golden-set mining. Optional; nil disables
+	// capture. It must never slow or fail the answer.
+	QueryLog QueryLog
 	// DualRetrieval searches on both the question as asked and its rewrite,
 	// then merges. Off, the rewrite replaces the question, so a bad rewrite
 	// loses good chunks with nothing to recover them; on, the original
@@ -176,8 +180,13 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, history []Tu
 
 	// Nothing relevant here: tell the caller whether another of their teams
 	// can answer, without retrieving anything from it.
-	if o.Counter != nil && belowFloor(chosen, o.RelevanceFloor) {
-		var suggestions []TeamSuggestion
+	below := belowFloor(chosen, o.RelevanceFloor)
+	var suggestions []TeamSuggestion
+	if o.Counter != nil && below {
+		// Log the query, not just that the gate fired: a below-floor firing is
+		// a candidate recall failure, and it is useless for building a golden
+		// set if you cannot tell which question caused it.
+		o.logger().Info("below relevance floor; probing other teams", "floor", o.RelevanceFloor, "q", rankQuery)
 		for _, other := range scope.Others() {
 			probe := NewScope(other, nil, scope.Groups())
 			n, err := o.Counter.Count(ctx, rankQuery, probe, o.RelevanceFloor)
@@ -189,6 +198,22 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, history []Tu
 		if len(suggestions) > 0 {
 			out <- StreamEvent{Type: "suggestion", Data: suggestions}
 		}
+	}
+
+	// Capture the query for offline golden-set mining. Fire-and-forget by
+	// contract (see QueryLog); it must not delay the stream below.
+	if o.QueryLog != nil {
+		teams := make([]string, 0, len(suggestions))
+		for _, s := range suggestions {
+			teams = append(teams, s.Team)
+		}
+		o.QueryLog.Record(ctx, QueryRecord{
+			Team:        scope.Team().Slug(),
+			Question:    question,
+			Rewritten:   rankQuery,
+			BelowFloor:  below,
+			Suggestions: teams,
+		})
 	}
 
 	selected := len(chosen)
