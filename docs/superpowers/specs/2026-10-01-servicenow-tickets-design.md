@@ -24,19 +24,33 @@ unreachable. It must never answer a ticket question from RAG documents.
 
 ## Architecture
 
-A ticket turn is a **second branch** in the chat handler that runs *instead of*
-RAG retrieval, not alongside it.
+A ticket turn is a **second branch** inside `rag.Orchestrator.Answer`, placed
+right after the existing greeting gate and running *instead of* RAG retrieval.
+The branch point is the orchestrator, not the HTTP handler, because that is
+where retrieval, rewrite and the greeting gate already live.
 
 ```
 request (X-Team=star, "latest open ticket for star")
-  → rewrite step also emits intent  ──┐  (+ heuristic fast-path: INC\d+, "open ticket")
+  → Orchestrator.Answer
+      → greeting gate (unchanged)
+      → INTENT GATE (new, fires on every turn incl. first):
+            heuristic fast-path (INC\d+, "ticket", "incident", "open ticket")
+            → no match AND classifier configured → one LLM classify call
                                        │
            intent == "ticket" ? ───────┤
                                        │
-   yes → servicenow.LatestOpen(team's group)   no → existing RAG path (unchanged)
-          → feed tickets to existing LLM answer step → short summary
-          → empty/error → honest status, NO RAG fallback
+   yes → Tickets.LatestOpen(team)      no → existing RAG path (unchanged)
+          → feed tickets to the LLM answer step → short summary
+          → empty / error / not-configured → honest status, NO RAG fallback
 ```
+
+### Why a dedicated gate, not the rewrite step
+
+The rewrite step (`orchestrator.go` `queries`) is skipped on a first turn with
+no history when dual retrieval is off (prod default `KA_RETRIEVE_MODE=single`).
+A ticket query is usually a first turn, so folding intent into rewrite would
+never classify the common case. The gate therefore mirrors `isGreeting`: it runs
+before retrieval on every turn.
 
 ### Invariant: team is never inferred from text
 
@@ -84,20 +98,39 @@ Populate in `DefaultInfos()` literals (team config is not Terraform, so literals
 are consistent with today). A team with an empty `ServiceNowGroup` returns the
 "no tickets configured" status rather than querying.
 
-### `internal/rewrite`
+### `internal/rag` — intent gate + ticket branch
 
-Add an `intent` field to the parsed JSON in `prompt.go`; both `Ollama` and
-`Bedrock` backends return it. Signature grows to carry intent alongside the
-rewritten query; both callers updated. Allowed values: `ticket`, `docs`,
-`greeting` (default `docs` on parse miss).
+Unchanged `rewrite`. Instead the orchestrator grows a gate that mirrors the
+greeting gate, plus a decoupled ticket source so `rag` never imports
+`servicenow` or `team`-config detail beyond the `team.Team` it already holds.
 
-### chat handler
+New in `rag`:
 
-- Determine intent (heuristic fast-path, then rewrite's `intent`).
-- On `ticket`: resolve the caller's team → `ServiceNowGroup` → `servicenow.LatestOpen`
-  → reuse the existing answer-generation LLM call with tickets as context (in
-  place of chunks) → short summary.
-- Honest status for empty / error (see below). No RAG fallback on a ticket turn.
+- `type Ticket struct { Number, ShortDescription, State, Priority, UpdatedOn, URL string }`
+- `type TicketSource interface { LatestOpen(ctx context.Context, t team.Team, limit int) ([]Ticket, error) }`
+  — a sentinel `ErrTeamNotConfigured` distinguishes "no ServiceNow group for
+  this team" from a transport error.
+- `type Classifier interface { Classify(ctx context.Context, question string) (bool, error) }`
+  — returns whether the question is a ticket query. Optional; nil means
+  heuristic-only.
+- `func isTicketQuery(question string) bool` — the heuristic fast-path
+  (`internal/rag/ticket.go`), tested like `isGreeting`.
+- `Orchestrator` gains optional fields `Tickets TicketSource`, `Classifier
+  Classifier`, and `TicketLimit int` (default 5).
+
+Flow in `Answer`, after the greeting gate: if `isTicketQuery` or (Classifier
+set and it returns true), take the ticket branch; otherwise fall through to RAG
+unchanged. The branch fetches via `Tickets.LatestOpen`, streams a short summary
+built from a ticket prompt, emits empty `retrieval`/`citation` events (as the
+greeting gate does), then `done`. No RAG fallback on a ticket turn.
+
+### chat-api wiring — `ticketSource` adapter
+
+A small adapter in the chat-api wiring implements `rag.TicketSource`: it holds
+the `team.Registry` and a `*servicenow.Client`, resolves `team.Team` →
+`Info.ServiceNowGroup` (empty → `ErrTeamNotConfigured`), calls
+`client.LatestOpen(group, limit)`, and maps `servicenow.Incident` → `rag.Ticket`.
+This is the only place `servicenow` and `team` config meet `rag`.
 
 ### config
 
@@ -108,6 +141,9 @@ Env-driven, same helpers as today:
 - `KA_SERVICENOW_USER` — integration user id.
 - `KA_SERVICENOW_SECRET_ID` — Secrets Manager secret id holding the password (AWS).
 - `KA_SERVICENOW_PASSWORD` — password for local dev only.
+- `KA_SERVICENOW_CLASSIFY` — `off` (default) / `on`. Enables the LLM intent
+  classifier fallback; off = heuristic-only gate.
+- `KA_SERVICENOW_LIMIT` — max tickets fetched/summarized (default 5).
 
 **Credential source split:**
 
@@ -123,11 +159,19 @@ Secrets Manager; otherwise use `KA_SERVICENOW_PASSWORD`.
 
 ## Intent detection
 
-- **Heuristic fast-path** (always on, even when rewrite is off): `INC\d+` or
-  literal "open ticket" / "incident" → `ticket`. Deterministic, cheap.
-- **LLM classifier**: when rewrite is on, the rewrite call returns `intent`
-  alongside the rewritten query — no extra round-trip. When rewrite is off, only
-  the heuristic runs (obvious cases only; acceptable).
+A dedicated gate in the orchestrator, before retrieval, on every turn:
+
+- **Heuristic fast-path** (`isTicketQuery`, always on): case-insensitive match on
+  `INC\d+`, or the words "ticket" / "incident" / "open ticket". Deterministic,
+  cheap, no LLM. Handles the common phrasing.
+- **LLM classifier** (optional `Classifier`): runs only when the heuristic does
+  *not* match and `KA_SERVICENOW_CLASSIFY` is on. One cheap classify call catches
+  phrasing the heuristic misses ("any outages for star?"). It is a real extra
+  LLM call on non-heuristic turns — accepted for robustness. When unset, the gate
+  is heuristic-only.
+
+The gate decides *intent only*, never *which team* — team stays from `X-Team` +
+`Authorize`.
 
 ## Auth
 
@@ -149,7 +193,10 @@ details.
 ## Testing
 
 - `servicenow`: `httptest` stub — success, empty, 500, timeout; query/auth shape.
-- `team`: new fields present and parsed.
-- `rewrite`: parse test for the `intent` field (both backends' parse paths).
-- chat handler: ticket branch success, authorization refusal, empty, and error
-  messages; confirms no RAG on a ticket turn.
+- `team`: new `ServiceNowGroup` / `Contact` fields present.
+- `rag`: `isTicketQuery` heuristic table test; orchestrator ticket-branch tests
+  (success summary, empty status, transport error status, not-configured status)
+  using stub `TicketSource`/`Classifier`/`LLM`; confirms no retrieval call on a
+  ticket turn.
+- chat-api `ticketSource` adapter: team→group resolution, empty group →
+  `ErrTeamNotConfigured`, `Incident`→`Ticket` mapping.
