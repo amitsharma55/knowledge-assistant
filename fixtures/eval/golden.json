@@ -63,5 +63,32 @@
     "relevant": [
       { "pageId": "data-call-sla", "section": "Targets", "grade": 2 }
     ]
+  },
+  {
+    "id": "lt-star-workgroup-id",
+    "query": "What is the workgroup ID and SPOC for the Star team?",
+    "team": "star",
+    "category": "literal_token",
+    "relevant": [
+      { "pageId": "star-workgroup-directory", "section": "Workgroup and contacts", "grade": 2 }
+    ]
+  },
+  {
+    "id": "lt-coupa-workgroup-id",
+    "query": "What is the workgroup ID and SPOC for the Coupa middleware team?",
+    "team": "coupa",
+    "category": "literal_token",
+    "relevant": [
+      { "pageId": "coupa-workgroup-directory", "section": "Workgroup and contacts", "grade": 2 }
+    ]
+  },
+  {
+    "id": "lt-hr-workgroup-id",
+    "query": "What is the workgroup ID and SPOC for the HR team?",
+    "team": "hr",
+    "category": "literal_token",
+    "relevant": [
+      { "pageId": "hr-workgroup-directory", "section": "Workgroup and contacts", "grade": 2 }
+    ]
   }
 ]
