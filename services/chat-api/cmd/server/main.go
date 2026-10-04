@@ -245,7 +245,7 @@ func main() {
 	authed := r.With(middleware.Auth(true /* dev */), middleware.WithScope(registry, resolver))
 	authed.Method(http.MethodGet, "/v1/teams", &handler.TeamsHandler{Registry: registry})
 	authed.Method(http.MethodPost, "/v1/chat/messages", &handler.ChatHandler{
-		Orchestrator: orch, Sessions: sessions, Repo: repository, Log: log,
+		Orchestrator: orch, Sessions: sessions, Repo: repository, Log: log, Trace: cfg.Trace,
 	})
 	authed.Method(http.MethodPost, "/v1/uploads", &handler.UploadHandler{
 		Sessions: sessions, Detector: detector, Review: reviewStore, Log: log,

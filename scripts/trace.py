@@ -70,6 +70,11 @@ def render(e, state):
             for line in e.get(key, "").splitlines():
                 print(f"  {C['dim']}│{C['off']} {line}")
 
+    elif msg == "trace: response":
+        print(f"\n  {C['hdr']}RESPONSE{C['off']} {C['dim']}(what the user sees){C['off']}")
+        for line in e.get("text", "").splitlines():
+            print(f"  {C['q']}│{C['off']} {line}")
+
     elif e.get("level") in ("WARN", "ERROR"):
         print(f"  {C['warn']}· {e.get('level')}: {msg} {e.get('err','')}{C['off']}")
     else:

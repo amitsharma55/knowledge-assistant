@@ -20,6 +20,9 @@ type ChatHandler struct {
 	Sessions     *session.Store
 	Repo         *repo.Repo // if nil, chats are not persisted
 	Log          *slog.Logger
+	// Trace logs the full model response once streaming completes, to close the
+	// KA_TRACE pipeline view the orchestrator opens. Verbose; off by default.
+	Trace bool
 }
 
 type chatReq struct {
@@ -127,6 +130,9 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
 		flusher.Flush()
 		return
+	}
+	if h.Trace {
+		h.Log.Info("trace: response", "text", assistantText.String())
 	}
 	if h.Repo != nil && assistantText.Len() > 0 {
 		if _, err := h.Repo.AppendMessage(r.Context(), chat.ID, "assistant", assistantText.String(), citations); err != nil {
