@@ -80,7 +80,7 @@ GET /api/now/table/incident
 Errors wrapped `fmt.Errorf("servicenow: ...: %w", err)`; operator-facing messages
 say how to fix. Tested with an `httptest` server (success / empty / 500 / timeout).
 
-### `internal/team`
+### `internal/team` — config-driven workgroup + contact
 
 Extend `Info`:
 
@@ -89,14 +89,34 @@ type Info struct {
     Slug            string
     DisplayName     string
     SiteID          string
-    ServiceNowGroup string // ServiceNow assignment_group name; "" disables tickets for this team
+    ServiceNowGroup string // ServiceNow assignment_group ("workgroup"); "" disables tickets for this team
     Contact         string // on-call / owning contact; stored, not yet surfaced
 }
 ```
 
-Populate in `DefaultInfos()` literals (team config is not Terraform, so literals
-are consistent with today). A team with an empty `ServiceNowGroup` returns the
-"no tickets configured" status rather than querying.
+`ServiceNowGroup` and `Contact` are **config-driven, not literals**: a workgroup
+can change without a rebuild. `DefaultInfos()` keeps only the stable identity
+(`Slug`, `DisplayName`); the ticket metadata is overlaid at startup from config.
+
+New in `team`:
+
+```go
+type Metadata struct {
+    ServiceNowGroup string `json:"serviceNowGroup"`
+    Contact         string `json:"contact"`
+}
+func ParseMetadata(raw string) (map[string]Metadata, error) // slug -> Metadata; "" raw -> empty map
+func ApplyMetadata(infos []Info, meta map[string]Metadata) []Info // overlay onto a copy; unknown slugs ignored
+```
+
+Source: a single env var `KA_TEAM_METADATA` holding a JSON object keyed by team
+slug, e.g. `{"star":{"serviceNowGroup":"Star Support","contact":"star-oncall@example.com"}}`.
+One var, works in local `.env` and in the K8s env block (no file mount). The
+workgroup is not a secret, so it is plain config in both environments — only the
+ServiceNow *password* uses Secrets Manager. Malformed JSON fails fast at startup
+(loud), never silently disabling tickets. A team whose slug is absent (or has an
+empty `serviceNowGroup`) returns the "not configured" status rather than
+querying.
 
 ### `internal/rag` — intent gate + ticket branch
 
@@ -144,6 +164,9 @@ Env-driven, same helpers as today:
 - `KA_SERVICENOW_CLASSIFY` — `off` (default) / `on`. Enables the LLM intent
   classifier fallback; off = heuristic-only gate.
 - `KA_SERVICENOW_LIMIT` — max tickets fetched/summarized (default 5).
+- `KA_TEAM_METADATA` — JSON object, team slug → `{serviceNowGroup, contact}`.
+  Plain config in both local and AWS (not a secret). Empty = no team has a
+  workgroup, so ticket lookup reports "not configured" for every team.
 
 **Credential source split:**
 
@@ -193,7 +216,9 @@ details.
 ## Testing
 
 - `servicenow`: `httptest` stub — success, empty, 500, timeout; query/auth shape.
-- `team`: new `ServiceNowGroup` / `Contact` fields present.
+- `team`: `ParseMetadata` (valid JSON, empty string, malformed → error) and
+  `ApplyMetadata` (overlay by slug, unknown slug ignored, empty map leaves
+  groups empty).
 - `rag`: `isTicketQuery` heuristic table test; orchestrator ticket-branch tests
   (success summary, empty status, transport error status, not-configured status)
   using stub `TicketSource`/`Classifier`/`LLM`; confirms no retrieval call on a
