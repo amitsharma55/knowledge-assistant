@@ -26,7 +26,10 @@ export KA_TEST_LOG="$(mktemp)"
 want "make .*images"                  "up builds images"
 want "terraform .*apply -auto-approve" "up applies the daily stack"
 want "buildx build --platform linux/amd64" "up build reached buildx"
+want "make .*seed-s3"                  "up syncs the corpus to S3"
 before "terraform .*apply" "aws eks update-kubeconfig" "apply precedes deploy (update-kubeconfig)"
+before "terraform .*apply" "make .*seed-s3" "corpus sync runs after apply (outputs available)"
+before "make .*seed-s3" "aws eks update-kubeconfig" "corpus sync precedes deploy/reseed"
 before "aws eks update-kubeconfig" "kubectl" "controller/deploy ran after kubeconfig"
 
 # --- down ---

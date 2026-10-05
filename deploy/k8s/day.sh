@@ -60,6 +60,18 @@ up() {
   echo "==> verifying infrastructure"
   "$daily/verify.sh"
 
+  # Upload the corpus to S3 BEFORE deploy: the reseed Job (run by deploy.sh)
+  # indexes from S3, not from the fixtures on disk, so any doc added to
+  # fixtures/ only reaches AWS once it is here. Skipping this is how a
+  # local-only fixture ("works on my machine") silently never gets answered in
+  # AWS. The bucket is the foundation docs bucket, sourced the same way
+  # deploy.sh does (a daily-stack output), never hardcoded.
+  echo "==> syncing the corpus to S3"
+  local bucket
+  bucket=$(terraform -chdir="$daily" output -json | jq -r '.docs_bucket.value')
+  [ -n "$bucket" ] && [ "$bucket" != null ] || { echo "day.sh: docs_bucket output is empty" >&2; exit 1; }
+  KA_DOCS_BUCKET="$bucket" make -C "$root" seed-s3
+
   echo "==> deploying the app"
   "$here/deploy.sh" up latest
 }
