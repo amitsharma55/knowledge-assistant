@@ -103,6 +103,15 @@ make run-api     # in one shell
 make run-ui      # in another
 ```
 
+If a question then fails with `opensearch 404: no such index [kb-chunks]`, the
+OpenSearch volume did not survive the reboot (only the index is gone; the
+services are up). Re-run `make seed` to rebuild it — it is idempotent, and the
+embedding model re-download is skipped if it is still cached:
+
+```sh
+make seed        # drops + reindexes the fixtures
+```
+
 > ⚠️ `make dev-down` passes `-v` and **deletes the Docker volumes** — the
 > OpenSearch index and the pulled embedding model. After it, the next start
 > needs the full first-run sequence again (including the ~270MB re-download in
@@ -118,7 +127,7 @@ header and the team from `X-Team` (see [Teams](#teams)):
 curl -s localhost:8080/v1/teams -H 'X-Dev-User: dev@example.com'
 
 # A grounded question against the coupa corpus (SSE stream).
-curl -N localhost:8080/v1/chat \
+curl -N localhost:8080/v1/chat/messages \
   -H 'X-Dev-User: dev@example.com' -H 'X-Team: coupa' \
   -H 'Content-Type: application/json' \
   -d '{"message":"How does invoice matching work?"}'
@@ -130,6 +139,22 @@ To measure retrieval quality against the fixture corpus after a change, use
 the `/check-retrieval` skill (wraps `python3 scripts/check_corpus.py` against a
 running chat-api). It is a 36-question sanity check, not an eval harness — a
 1–2 question swing is noise.
+
+### Trace the retrieval pipeline
+
+`python3 scripts/trace.py` renders each query's pipeline steps (retrieved,
+reranked, context, response) as it runs. It tails
+`${TMPDIR:-/tmp}/ka-dev/chat-api.log`, which **only exists if chat-api was
+started via the `/run-local` skill** — plain `make run-api` logs to its own
+terminal instead, and trace.py reports `no log at …/chat-api.log`. To use
+trace.py without the skill, start the API redirected to that file, with
+`KA_TRACE=1` for per-chunk scores and the full prompt/response:
+
+```sh
+mkdir -p "${TMPDIR:-/tmp}/ka-dev"
+KA_TRACE=1 make run-api > "${TMPDIR:-/tmp}/ka-dev/chat-api.log" 2>&1
+python3 scripts/trace.py   # in another shell, then ask a question
+```
 
 ### Tests, lint, build
 

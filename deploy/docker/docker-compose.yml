@@ -11,6 +11,12 @@ services:
       memlock: { soft: -1, hard: -1 }
     ports:
       - "9200:9200"
+    # Named volume so the kb-chunks index survives a reboot / container
+    # recreation. Without it the data sat in the writable layer and a Docker
+    # Desktop restart wiped the index, forcing a `make seed`. `make dev-down -v`
+    # still removes it -- that teardown is meant to be destructive.
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
 
   localstack:
     image: localstack/localstack:3
@@ -28,6 +34,8 @@ services:
       POSTGRES_DB: ka
     ports:
       - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
 
   # Local embedding model. Keeps the demo keyless and offline: chat-api and
   # the indexer both embed through this. The named volume holds the pulled
@@ -50,3 +58,5 @@ services:
 
 volumes:
   ollama-models:
+  opensearch-data:
+  postgres-data:
