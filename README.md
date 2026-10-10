@@ -103,14 +103,23 @@ make run-api     # in one shell
 make run-ui      # in another
 ```
 
-If a question then fails with `opensearch 404: no such index [kb-chunks]`, the
-OpenSearch volume did not survive the reboot (only the index is gone; the
-services are up). Re-run `make seed` to rebuild it — it is idempotent, and the
-embedding model re-download is skipped if it is still cached:
+OpenSearch and Postgres each have a named volume (`opensearch-data`,
+`postgres-data`), so the index and chat history now survive a reboot and
+container recreation — a normal start needs no reseed.
+
+If a question still fails with `opensearch 404: no such index [kb-chunks]`, the
+OpenSearch volume was lost anyway (e.g. after `make dev-down -v`). Re-run
+`make seed` to rebuild it — it is idempotent, and the embedding model
+re-download is skipped if it is still cached:
 
 ```sh
 make seed        # drops + reindexes the fixtures
 ```
+
+If instead a chat fails with `create chat: ERROR: relation "chats" does not
+exist`, the Postgres container was recreated (fresh empty DB) while chat-api
+kept running: chat-api only applies `schema.sql` at startup, so restart it to
+re-run the migration against the new DB.
 
 > ⚠️ `make dev-down` passes `-v` and **deletes the Docker volumes** — the
 > OpenSearch index and the pulled embedding model. After it, the next start
