@@ -105,7 +105,12 @@ make run-ui      # in another
 
 OpenSearch and Postgres each have a named volume (`opensearch-data`,
 `postgres-data`), so the index and chat history now survive a reboot and
-container recreation — a normal start needs no reseed.
+container recreation — a normal start needs no reseed. The services also carry
+`restart: unless-stopped`, so with Docker Desktop set to start at login they
+come back on their own and `make dev-up` is usually a no-op. chat-api retries
+its first Postgres connection for ~30s at startup, so it no longer matters
+whether it or the database wins the boot race — the earlier "restart chat-api
+after a reboot" step is gone.
 
 If a question still fails with `opensearch 404: no such index [kb-chunks]`, the
 OpenSearch volume was lost anyway (e.g. after `make dev-down -v`). Re-run

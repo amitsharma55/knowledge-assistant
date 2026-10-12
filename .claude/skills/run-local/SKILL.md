@@ -12,8 +12,10 @@ Logs go to `${TMPDIR:-/tmp}/ka-dev/` — `mkdir -p` it first.
 3. **Services.** Check that `curl -s -o /dev/null -w '%{http_code}' localhost:9200` returns 200. If not, run `make dev-up` and poll the check.
 4. **Index.** Check with `curl -s localhost:9200/kb-chunks/_count`. If the index is missing or the count is 0, run `make seed`. The first run pulls the ~270MB embedding model.
 5. **chat-api (:8080).** Check with `lsof -nP -iTCP:8080 -sTCP:LISTEN`. If nothing is listening, run:
-   `nohup make run-api > "${TMPDIR:-/tmp}/ka-dev/chat-api.log" 2>&1 < /dev/null & disown`
-   then poll `curl -sf localhost:8080/healthz`.
+   `nohup env KA_TRACE=1 make run-api > "${TMPDIR:-/tmp}/ka-dev/chat-api.log" 2>&1 < /dev/null & disown`
+   then poll `curl -sf localhost:8080/healthz`. `KA_TRACE=1` makes the log hold
+   the per-query pipeline detail `scripts/trace.py` renders; drop it only if the
+   extra log volume is a problem.
 6. **UI (:5173).** Check the same way on 5173. If nothing is listening, run `npm --prefix ui install` (only if `ui/node_modules` is missing), then:
    `nohup npm --prefix ui run dev > "${TMPDIR:-/tmp}/ka-dev/ui.log" 2>&1 < /dev/null & disown`
    then poll `curl -s -o /dev/null -w '%{http_code}' localhost:5173/` until it returns 200.

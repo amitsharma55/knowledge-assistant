@@ -40,11 +40,25 @@ func New(ctx context.Context, dsn string) (*Repo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
-	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("migrate: %w", err)
+	// On a cold boot chat-api often starts before Postgres accepts connections
+	// (the container is still coming up). This Exec forces the first real
+	// connection, so without a retry a one-second race left repository=nil and
+	// the /v1/chats routes silently unregistered until a manual restart. Retry
+	// for up to ~30s so a reboot brings chats back on its own.
+	var lastErr error
+	for i := 0; i < 30; i++ {
+		if _, lastErr = pool.Exec(ctx, schemaSQL); lastErr == nil {
+			return &Repo{Pool: pool}, nil
+		}
+		select {
+		case <-ctx.Done():
+			pool.Close()
+			return nil, fmt.Errorf("migrate: %w", ctx.Err())
+		case <-time.After(time.Second):
+		}
 	}
-	return &Repo{Pool: pool}, nil
+	pool.Close()
+	return nil, fmt.Errorf("migrate: %w", lastErr)
 }
 
 func (r *Repo) Close() { r.Pool.Close() }

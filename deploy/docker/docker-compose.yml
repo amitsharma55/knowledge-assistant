@@ -1,6 +1,9 @@
 services:
   opensearch:
     image: opensearchproject/opensearch:2.15.0
+    # Come back on their own after a reboot / Docker Desktop restart; `make
+    # dev-down` still removes them, so this only resurrects a stop, not a down.
+    restart: unless-stopped
     environment:
       - discovery.type=single-node
       - plugins.security.disabled=true
@@ -20,6 +23,7 @@ services:
 
   localstack:
     image: localstack/localstack:3
+    restart: unless-stopped
     environment:
       - SERVICES=s3
       - DEFAULT_REGION=us-east-1
@@ -28,6 +32,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ka
       POSTGRES_PASSWORD: ka
@@ -51,6 +56,7 @@ services:
   # http://localhost:11435 to reach this one.
   ollama:
     image: ollama/ollama:latest
+    restart: unless-stopped
     volumes:
       - ollama-models:/root/.ollama
     ports:
