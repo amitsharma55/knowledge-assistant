@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -50,6 +51,16 @@ type Orchestrator struct {
 	// system and user prompt sent to the model. Verbose by design; off unless
 	// an operator is watching a query go through (KA_TRACE).
 	Trace bool
+	// Tickets, when set, turns a ticket-intent turn into a live ServiceNow
+	// lookup instead of a document search. Nil disables the feature entirely:
+	// ticket phrasing then falls through to normal retrieval.
+	Tickets TicketSource
+	// Classifier is the optional LLM fallback of the intent gate, used only
+	// when the heuristic does not match. Nil means heuristic-only.
+	Classifier Classifier
+	// TicketLimit caps how many open tickets are fetched and summarized.
+	// Zero means 5.
+	TicketLimit int
 }
 
 func (o *Orchestrator) logger() *slog.Logger {
@@ -113,6 +124,14 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, history []Tu
 		}
 		out <- StreamEvent{Type: "done"}
 		return nil
+	}
+
+	// Ticket intent routes to a live ServiceNow lookup instead of retrieval.
+	// Gated on Tickets being configured so ticket phrasing is a normal question
+	// when the feature is off. Decided on intent only; the team is the scope's,
+	// never the message's.
+	if o.Tickets != nil && o.ticketIntent(ctx, question) {
+		return o.answerTickets(ctx, question, history, scope, out)
 	}
 
 	// The question the user asked is what the model answers and what the UI
@@ -420,4 +439,64 @@ func mark(all, chosen []Chunk, selected int) []RetrievedChunk {
 		out = append(out, RetrievedChunk{Chunk: c, Used: ok, Rank: i + 1, Reason: r})
 	}
 	return out
+}
+
+func (o *Orchestrator) ticketLimit() int {
+	if o.TicketLimit > 0 {
+		return o.TicketLimit
+	}
+	return 5
+}
+
+// ticketIntent is the intent gate: heuristic first, then the optional
+// classifier. A classifier error is not fatal — it falls back to "not a ticket
+// query", so the turn becomes a normal document search rather than failing.
+func (o *Orchestrator) ticketIntent(ctx context.Context, question string) bool {
+	if isTicketQuery(question) {
+		return true
+	}
+	if o.Classifier == nil {
+		return false
+	}
+	yes, err := o.Classifier.Classify(ctx, question)
+	if err != nil {
+		o.logger().Warn("ticket classify failed; treating as a normal question", "err", err)
+		return false
+	}
+	return yes
+}
+
+// answerTickets fetches the team's open tickets and streams a short summary.
+// It never falls back to retrieval: the point of the feature is real-time
+// truth, and answering a ticket question from documents would be a fabrication.
+func (o *Orchestrator) answerTickets(ctx context.Context, question string, history []Turn, scope Scope, out chan<- StreamEvent) error {
+	// Mirror the greeting gate: a ticket turn retrieves nothing, so the context
+	// panel is explicitly empty rather than stale.
+	out <- StreamEvent{Type: "retrieval", Data: []RetrievedChunk{}}
+	out <- StreamEvent{Type: "citation", Data: []Chunk{}}
+
+	tickets, err := o.Tickets.LatestOpen(ctx, scope.Team(), o.ticketLimit())
+	switch {
+	case errors.Is(err, ErrTeamNotConfigured):
+		o.streamStatus(out, "Ticket lookup isn't configured for "+scope.Team().Slug()+".")
+	case err != nil:
+		o.logger().Warn("servicenow lookup failed", "err", err, "team", scope.Team().Slug())
+		o.streamStatus(out, "Can't reach ServiceNow right now — try again in a moment.")
+	case len(tickets) == 0:
+		o.streamStatus(out, "No open tickets for "+scope.Team().Slug()+".")
+	default:
+		prompt := BuildTicketPrompt(question, history, tickets)
+		o.tracePrompt(prompt)
+		if err := o.LLM.Stream(ctx, prompt, out); err != nil {
+			return fmt.Errorf("llm: %w", err)
+		}
+	}
+	out <- StreamEvent{Type: "done"}
+	return nil
+}
+
+// streamStatus sends a plain status line as a single token, so it is persisted
+// and rendered exactly like a normal answer.
+func (o *Orchestrator) streamStatus(out chan<- StreamEvent, msg string) {
+	out <- StreamEvent{Type: "token", Data: msg}
 }
