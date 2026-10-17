@@ -69,7 +69,7 @@ spec:
             # TODO: set KA_SERVICENOW_USER to the integration user before deploy.
             - { name: KA_SERVICENOW_MODE, value: "on" }
             - { name: KA_SERVICENOW_URL, value: "https://dev370995.service-now.com/" }
-            - { name: KA_SERVICENOW_USER, value: "REPLACE_WITH_SERVICENOW_USER" }
+            - { name: KA_SERVICENOW_USER, value: "admin" }
             # Must match foundation's servicenow_secret_name.
             - { name: KA_SERVICENOW_SECRET_ID, value: ka/servicenow-password }
             - name: KA_TEAM_METADATA
