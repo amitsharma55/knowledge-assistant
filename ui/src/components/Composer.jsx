@@ -99,6 +99,9 @@ export default function Composer({ onSend, onUpload, onStop, streaming, uploadin
           </button>
         )}
       </div>
+      <p className="mt-2 text-[11px] text-ink-3 text-center">
+        Knowledge Assistant is an AI chatbot and can make mistakes. Verify important information.
+      </p>
     </div>
   );
 }
