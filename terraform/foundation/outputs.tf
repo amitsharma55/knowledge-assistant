@@ -65,6 +65,16 @@ output "anthropic_secret_name" {
   value       = aws_secretsmanager_secret.anthropic.name
 }
 
+output "servicenow_secret_arn" {
+  description = "Secret holding the ServiceNow integration-user password."
+  value       = aws_secretsmanager_secret.servicenow.arn
+}
+
+output "servicenow_secret_name" {
+  description = "Name to pass to `aws secretsmanager put-secret-value --secret-id`."
+  value       = aws_secretsmanager_secret.servicenow.name
+}
+
 output "verify_expectations" {
   description = "Values verify.sh checks the live account against."
   value = {

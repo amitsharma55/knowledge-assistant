@@ -62,6 +62,18 @@ spec:
             # near-twins); ~0.78 separates more cleanly. Titan-v2 value is
             # still the live-stack recalibration below.
             - { name: KA_RELEVANCE_FLOOR, value: "0.81" }
+            # Live ServiceNow ticket feature (read/count/create). The password
+            # comes from Secrets Manager (KA_SERVICENOW_SECRET_ID); URL, user,
+            # and the per-team workgroup map are non-secret config. The pod role
+            # is granted GetSecretValue on this secret in foundation/iam.tf.
+            # TODO: set KA_SERVICENOW_USER to the integration user before deploy.
+            - { name: KA_SERVICENOW_MODE, value: "on" }
+            - { name: KA_SERVICENOW_URL, value: "https://dev370995.service-now.com/" }
+            - { name: KA_SERVICENOW_USER, value: "admin" }
+            # Must match foundation's servicenow_secret_name.
+            - { name: KA_SERVICENOW_SECRET_ID, value: ka/servicenow-password }
+            - name: KA_TEAM_METADATA
+              value: '{"coupa":{"serviceNowGroup":"Coupa AWS Middleware"},"star":{"serviceNowGroup":"Star Reporting"},"hr":{"serviceNowGroup":"HR WorkDay"}}'
             - name: KA_OPENSEARCH_URL
               valueFrom: { configMapKeyRef: { name: ka-config, key: opensearch_url } }
             # In-cluster ephemeral Postgres (deploy/k8s/base/postgres.yaml).

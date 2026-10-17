@@ -14,6 +14,7 @@ import (
 
 	"github.com/example/knowledge-assistant/internal/awsx"
 	"github.com/example/knowledge-assistant/internal/chunker"
+	"github.com/example/knowledge-assistant/internal/classify"
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
 	"github.com/example/knowledge-assistant/internal/osclient"
@@ -22,6 +23,7 @@ import (
 	"github.com/example/knowledge-assistant/internal/rerank"
 	"github.com/example/knowledge-assistant/internal/review"
 	"github.com/example/knowledge-assistant/internal/rewrite"
+	"github.com/example/knowledge-assistant/internal/servicenow"
 	"github.com/example/knowledge-assistant/internal/team"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/anthropic"
 	"github.com/example/knowledge-assistant/services/chat-api/internal/bedrock"
@@ -204,6 +206,74 @@ func main() {
 		// rewriter there is no second query, so this is a configuration
 		// that silently does nothing.
 		log.Warn("KA_RETRIEVE_MODE=dual has no effect while KA_REWRITE_MODE is off")
+	}
+
+	// Live ServiceNow ticket lookup. Off by default: Tickets stays nil and
+	// ticket phrasing is answered as a normal document question. When on, the
+	// password resolves from Secrets Manager (AWS) or the env (local dev), and
+	// per-team workgroups come from KA_TEAM_METADATA.
+	switch cfg.ServiceNowMode {
+	case "on":
+		pw := cfg.ServiceNowPassword
+		if cfg.ServiceNowSecretID != "" {
+			sm, err := secrets.Client(context.Background())
+			if err != nil {
+				log.Error("servicenow secrets client", "err", err)
+				os.Exit(1)
+			}
+			pw, err = secrets.FetchAPIKey(context.Background(), sm, cfg.ServiceNowSecretID)
+			if err != nil {
+				log.Error("servicenow password from secrets manager", "err", err)
+				os.Exit(1)
+			}
+		}
+		if cfg.ServiceNowURL == "" || cfg.ServiceNowUser == "" || pw == "" {
+			log.Error("KA_SERVICENOW_MODE=on but URL, user, or password is missing")
+			os.Exit(2)
+		}
+		meta, err := team.ParseMetadata(cfg.TeamMetadata)
+		if err != nil {
+			log.Error("team metadata", "err", err)
+			os.Exit(2)
+		}
+		registry := team.NewRegistry(team.ApplyMetadata(team.DefaultInfos(), meta))
+		orch.Tickets = ticketSource{
+			reg: registry,
+			cli: servicenow.Client{
+				BaseURL:  cfg.ServiceNowURL,
+				User:     cfg.ServiceNowUser,
+				Password: pw,
+				HTTP:     &http.Client{Timeout: cfg.ServiceNowTimeout},
+			},
+		}
+		orch.TicketLimit = cfg.ServiceNowLimit
+		log.Info("servicenow ticket lookup enabled", "url", cfg.ServiceNowURL, "user", cfg.ServiceNowUser)
+
+		// Optional LLM intent fallback, only when tickets are on. Reuses the
+		// rewrite model/endpoint config.
+		switch cfg.ServiceNowClassify {
+		case "ollama":
+			orch.Classifier = classify.Ollama{BaseURL: cfg.RewriteURL, Model: cfg.RewriteModel, HTTP: &http.Client{Timeout: cfg.RewriteTimeout}}
+			log.Info("ticket intent classifier enabled", "mode", "ollama", "model", cfg.RewriteModel)
+		case "bedrock":
+			bc, err := awsx.BedrockRuntime(context.Background())
+			if err != nil {
+				log.Error("bedrock classifier", "err", err)
+				os.Exit(1)
+			}
+			orch.Classifier = classify.NewBedrock(cfg.RewriteModel, bc)
+			log.Info("ticket intent classifier enabled", "mode", "bedrock", "model", cfg.RewriteModel)
+		case "", "off":
+			log.Info("ticket intent classifier disabled; heuristic only")
+		default:
+			log.Error("unknown KA_SERVICENOW_CLASSIFY; want \"ollama\", \"bedrock\" or \"off\"", "mode", cfg.ServiceNowClassify)
+			os.Exit(2)
+		}
+	case "", "off":
+		log.Info("servicenow ticket lookup disabled")
+	default:
+		log.Error("unknown KA_SERVICENOW_MODE; want \"on\" or \"off\"", "mode", cfg.ServiceNowMode)
+		os.Exit(2)
 	}
 
 	r := chi.NewRouter()

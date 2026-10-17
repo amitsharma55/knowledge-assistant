@@ -2,6 +2,52 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { groupCitations, citationTargets } from '../citations';
 import { rehypeCitations } from '../markdown.jsx';
+import { parseTicket } from '../ticket.js';
+import { TicketIcon, CheckCircleIcon } from '../icons.jsx';
+
+// TicketCard renders the create flow's deterministic messages (a draft to
+// confirm, or a filed incident) as a compact card rather than serif prose: a
+// ticket is a record, not a passage, and the book layout made it read like one.
+function TicketCard({ ticket }) {
+  if (ticket.kind === 'filed') {
+    return (
+      <div className="rounded-lg border border-rule bg-surface-2 px-4 py-3 not-prose">
+        <div className="flex items-center gap-2 text-good text-sm font-medium">
+          <CheckCircleIcon className="w-4 h-4" />
+          Incident filed
+        </div>
+        <div className="mt-1.5 font-mono text-[15px]">
+          {ticket.url ? (
+            <a href={ticket.url} target="_blank" rel="noreferrer"
+               className="text-accent underline underline-offset-2 decoration-accent-edge">
+              {ticket.number}
+            </a>
+          ) : (
+            <span>{ticket.number}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-accent-edge bg-accent-tint/40 px-4 py-3 not-prose">
+      <div className="flex items-center gap-2 text-accent text-xs font-semibold uppercase tracking-wide">
+        <TicketIcon className="w-4 h-4" />
+        Draft incident{ticket.team ? ` · ${ticket.team}` : ''}
+      </div>
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+        <dt className="text-ink-3">Issue</dt>
+        <dd className="text-ink">{ticket.issue}</dd>
+        <dt className="text-ink-3">Priority</dt>
+        <dd className="text-ink">{ticket.priority}</dd>
+      </dl>
+      <p className="mt-2.5 pt-2.5 border-t border-accent-edge/50 text-xs text-ink-2">
+        Reply <span className="font-semibold text-ink">confirm</span> to file it, or{' '}
+        <span className="font-semibold text-ink">cancel</span>.
+      </p>
+    </div>
+  );
+}
 
 // The user's turn is set as the question that heads a section, and the
 // assistant's as the document under it. Neither is a bubble: long answers full
@@ -24,6 +70,17 @@ export default function Message({ role, content, citations, streaming, retrievin
 
   const sources = groupCitations(citations);
   const targets = citationTargets(citations);
+  const ticket = parseTicket(content);
+
+  if (ticket) {
+    return (
+      <div className="px-4 sm:px-10 pt-4 pb-2">
+        <div className="max-w-[46rem] mx-auto">
+          <TicketCard ticket={ticket} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 sm:px-10 pt-4 pb-2">

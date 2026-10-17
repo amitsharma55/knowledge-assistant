@@ -24,6 +24,7 @@ chat_role=$(out '.pod_role_arns.value["chat-api"]')
 ingest_role=$(out '.pod_role_arns.value.ingestion')
 docs_bucket=$(out '.docs_bucket.value')
 secret_arn=$(out '.anthropic_secret_arn.value')
+sn_secret_arn=$(out '.servicenow_secret_arn.value')
 partition=$(cut -d: -f2 <<<"$chat_role")
 account_id=$(cut -d: -f5 <<<"$chat_role")
 docs_object="arn:${partition}:s3:::${docs_bucket}/probe.md"
@@ -59,6 +60,7 @@ done
 expect denied "$chat_role" bedrock:InvokeModel "$(model_arn "$UNCONFIGURED_MODEL")" \
   "chat-api may not invoke $UNCONFIGURED_MODEL"
 expect allowed "$chat_role" secretsmanager:GetSecretValue "$secret_arn" "chat-api may read the Claude key"
+expect allowed "$chat_role" secretsmanager:GetSecretValue "$sn_secret_arn" "chat-api may read the ServiceNow password"
 expect denied "$chat_role" s3:GetObject "$docs_object" "chat-api may not read documents"
 
 echo "== ingestion"
@@ -72,6 +74,7 @@ expect denied "$ingest_role" bedrock:InvokeModel "$(model_arn "$UNCONFIGURED_MOD
   "ingestion may not invoke $UNCONFIGURED_MODEL"
 expect allowed "$ingest_role" s3:GetObject "$docs_object" "ingestion may read documents"
 expect denied "$ingest_role" secretsmanager:GetSecretValue "$secret_arn" "ingestion may not read the Claude key"
+expect denied "$ingest_role" secretsmanager:GetSecretValue "$sn_secret_arn" "ingestion may not read the ServiceNow password"
 
 echo "== Claude key"
 if aws secretsmanager describe-secret --secret-id "$secret_arn" \
@@ -79,6 +82,14 @@ if aws secretsmanager describe-secret --secret-id "$secret_arn" \
   pass "the Claude key has a value (not printed)"
 else
   fail "the Claude key has no value: set it with put-secret-value"
+fi
+
+echo "== ServiceNow password"
+if aws secretsmanager describe-secret --secret-id "$sn_secret_arn" \
+  --query 'VersionIdsToStages' --output json | jq -e 'length > 0' >/dev/null; then
+  pass "the ServiceNow password has a value (not printed)"
+else
+  fail "the ServiceNow password has no value: set it with put-secret-value"
 fi
 
 echo "== budget"

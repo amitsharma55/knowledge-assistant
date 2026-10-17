@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -50,6 +51,16 @@ type Orchestrator struct {
 	// system and user prompt sent to the model. Verbose by design; off unless
 	// an operator is watching a query go through (KA_TRACE).
 	Trace bool
+	// Tickets, when set, turns a ticket-intent turn into a live ServiceNow
+	// lookup instead of a document search. Nil disables the feature entirely:
+	// ticket phrasing then falls through to normal retrieval.
+	Tickets TicketSource
+	// Classifier is the optional LLM fallback of the intent gate, used only
+	// when the heuristic does not match. Nil means heuristic-only.
+	Classifier Classifier
+	// TicketLimit caps how many open tickets are fetched and summarized.
+	// Zero means 5.
+	TicketLimit int
 }
 
 func (o *Orchestrator) logger() *slog.Logger {
@@ -96,6 +107,16 @@ func snippet(s string, n int) string {
 // non-nil, its chunks are included first (user's uploaded doc = explicit
 // intent), then filled with the primary retriever's chunks up to RerankN.
 func (o *Orchestrator) Answer(ctx context.Context, question string, history []Turn, scope Scope, session Retriever, out chan<- StreamEvent) error {
+	// Ticket creation is a confirm-before-write conversation, routed before
+	// every other gate. It fires on a fresh create request OR when a create is
+	// already in progress — the follow-up answers ("high", "confirm") contain
+	// no create keyword, so only createInProgress carries them here. Checked
+	// before the read heuristic so "create a ticket" isn't swallowed by read's
+	// ticket/incident match.
+	if o.Tickets != nil && (isCreateTicketQuery(question) || createInProgress(history)) {
+		return o.answerCreateTicket(ctx, question, history, scope, out)
+	}
+
 	// A greeting or pleasantry ("hi", "how are you?", "thanks") gets a warm
 	// reply and no document search: retrieval scores can't tell small talk
 	// from a real question on this embedder, so we gate on the message itself,
@@ -113,6 +134,21 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, history []Tu
 		}
 		out <- StreamEvent{Type: "done"}
 		return nil
+	}
+
+	// A date-scoped count ("how many opened since last week") is answered by an
+	// aggregate query, not a listing. Checked before the read branch because
+	// the phrasing also contains "ticket"/"incident".
+	if o.Tickets != nil && isCountQuery(question) {
+		return o.answerCountTickets(ctx, question, scope, out)
+	}
+
+	// Ticket intent routes to a live ServiceNow lookup instead of retrieval.
+	// Gated on Tickets being configured so ticket phrasing is a normal question
+	// when the feature is off. Decided on intent only; the team is the scope's,
+	// never the message's.
+	if o.Tickets != nil && o.ticketIntent(ctx, question) {
+		return o.answerTickets(ctx, question, history, scope, out)
 	}
 
 	// The question the user asked is what the model answers and what the UI
@@ -420,4 +456,146 @@ func mark(all, chosen []Chunk, selected int) []RetrievedChunk {
 		out = append(out, RetrievedChunk{Chunk: c, Used: ok, Rank: i + 1, Reason: r})
 	}
 	return out
+}
+
+func (o *Orchestrator) ticketLimit() int {
+	if o.TicketLimit > 0 {
+		return o.TicketLimit
+	}
+	return 5
+}
+
+// ticketIntent is the intent gate: heuristic first, then the optional
+// classifier. A classifier error is not fatal — it falls back to "not a ticket
+// query", so the turn becomes a normal document search rather than failing.
+func (o *Orchestrator) ticketIntent(ctx context.Context, question string) bool {
+	if isTicketQuery(question) {
+		return true
+	}
+	if o.Classifier == nil {
+		return false
+	}
+	yes, err := o.Classifier.Classify(ctx, question)
+	if err != nil {
+		o.logger().Warn("ticket classify failed; treating as a normal question", "err", err)
+		return false
+	}
+	return yes
+}
+
+// answerTickets fetches the team's open tickets and streams a short summary.
+// It never falls back to retrieval: the point of the feature is real-time
+// truth, and answering a ticket question from documents would be a fabrication.
+func (o *Orchestrator) answerTickets(ctx context.Context, question string, history []Turn, scope Scope, out chan<- StreamEvent) error {
+	// Mirror the greeting gate: a ticket turn retrieves nothing, so the context
+	// panel is explicitly empty rather than stale.
+	out <- StreamEvent{Type: "retrieval", Data: []RetrievedChunk{}}
+	out <- StreamEvent{Type: "citation", Data: []Chunk{}}
+
+	tickets, err := o.Tickets.LatestOpen(ctx, scope.Team(), o.ticketLimit())
+	switch {
+	case errors.Is(err, ErrTeamNotConfigured):
+		o.streamStatus(out, "Ticket lookup isn't configured for "+scope.Team().Slug()+".")
+	case err != nil:
+		o.logger().Warn("servicenow lookup failed", "err", err, "team", scope.Team().Slug())
+		o.streamStatus(out, "Can't reach ServiceNow right now — try again in a moment.")
+	case len(tickets) == 0:
+		o.streamStatus(out, "No open tickets for "+scope.Team().Slug()+".")
+	default:
+		prompt := BuildTicketPrompt(question, history, tickets)
+		o.tracePrompt(prompt)
+		if err := o.LLM.Stream(ctx, prompt, out); err != nil {
+			return fmt.Errorf("llm: %w", err)
+		}
+	}
+	out <- StreamEvent{Type: "done"}
+	return nil
+}
+
+// answerCreateTicket runs the deterministic create state machine: it derives
+// the phase from (history, message), emits the next prompt or the draft, and —
+// only in the confirm phase, on an affirmative reply — files the incident. No
+// LLM is involved: every string is a template, so no fabricated field can reach
+// a write, and the write is testable. No stored state: the fields are read back
+// from history, so a later stray "yes" (whose prior turn is "Filed INC…", not a
+// draft) starts a fresh request rather than filing twice.
+func (o *Orchestrator) answerCreateTicket(ctx context.Context, message string, history []Turn, scope Scope, out chan<- StreamEvent) error {
+	// Like the other ticket branches: no retrieval, so the context panel is
+	// explicitly empty rather than stale.
+	out <- StreamEvent{Type: "retrieval", Data: []RetrievedChunk{}}
+	out <- StreamEvent{Type: "citation", Data: []Chunk{}}
+
+	team := scope.Team().Slug()
+	phase, issue, priority := draftFromHistory(history, message)
+	switch phase {
+	case "issue":
+		o.streamStatus(out, issuePrompt)
+	case "severity":
+		o.streamStatus(out, severityPrompt)
+	case "draft":
+		o.streamStatus(out, draftText(team, issue, priority))
+	case "confirm":
+		switch {
+		case isAffirmative(message):
+			o.fileTicket(ctx, scope, issue, priority, out)
+		case isCancel(message):
+			o.streamStatus(out, "Cancelled — nothing was filed.")
+		default:
+			// Any other reply: re-show the draft rather than guess intent.
+			o.streamStatus(out, draftText(team, issue, priority))
+		}
+	}
+	out <- StreamEvent{Type: "done"}
+	return nil
+}
+
+// fileTicket performs the one write in the create flow. On failure it leaves no
+// partial state: the draft stays reconstructable from history, so the user can
+// retry with "confirm".
+func (o *Orchestrator) fileTicket(ctx context.Context, scope Scope, issue, priority string, out chan<- StreamEvent) {
+	t, err := o.Tickets.Create(ctx, scope.Team(), TicketDraft{ShortDescription: issue, Priority: priority})
+	switch {
+	case errors.Is(err, ErrTeamNotConfigured):
+		o.streamStatus(out, "Ticket creation isn't configured for "+scope.Team().Slug()+".")
+	case err != nil:
+		o.logger().Warn("servicenow create failed", "err", err, "team", scope.Team().Slug())
+		o.streamStatus(out, "Couldn't file the ticket in ServiceNow right now — try again in a moment.")
+	default:
+		msg := "Filed " + t.Number
+		if t.URL != "" {
+			msg += " — " + t.URL
+		}
+		o.streamStatus(out, msg)
+	}
+}
+
+// streamStatus sends a plain status line as a single token, so it is persisted
+// and rendered exactly like a normal answer.
+func (o *Orchestrator) streamStatus(out chan<- StreamEvent, msg string) {
+	out <- StreamEvent{Type: "token", Data: msg}
+}
+
+// answerCountTickets answers a date-scoped count with an aggregate query and a
+// deterministic one-line reply — no LLM, so the number is exactly ServiceNow's.
+func (o *Orchestrator) answerCountTickets(ctx context.Context, question string, scope Scope, out chan<- StreamEvent) error {
+	out <- StreamEvent{Type: "retrieval", Data: []RetrievedChunk{}}
+	out <- StreamEvent{Type: "citation", Data: []Chunk{}}
+
+	w := parseCountWindow(question)
+	n, err := o.Tickets.CountOpened(ctx, scope.Team(), w)
+	switch {
+	case errors.Is(err, ErrTeamNotConfigured):
+		o.streamStatus(out, "Ticket lookup isn't configured for "+scope.Team().Slug()+".")
+	case err != nil:
+		o.logger().Warn("servicenow count failed", "err", err, "team", scope.Team().Slug())
+		o.streamStatus(out, "Can't reach ServiceNow right now — try again in a moment.")
+	default:
+		noun := "incidents were"
+		if n == 1 {
+			noun = "incident was"
+		}
+		o.streamStatus(out, fmt.Sprintf("%d %s opened for %s %s.", n, noun, scope.Team().Slug(), w.Label))
+	}
+	out <- StreamEvent{Type: "done"}
+	return nil
 }

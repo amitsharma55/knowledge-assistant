@@ -64,6 +64,24 @@ export function ChevronLeftIcon({ className = 'w-4 h-4' }) {
   );
 }
 
+export function TicketIcon({ className = 'w-4 h-4' }) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V7z" />
+      <path d="M13 5v14" strokeDasharray="2 2" />
+    </svg>
+  );
+}
+
+export function CheckCircleIcon({ className = 'w-4 h-4' }) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <path d="M22 4L12 14.01l-3-3" />
+    </svg>
+  );
+}
+
 export function AlertIcon({ className = 'w-4 h-4' }) {
   return (
     <svg {...base} className={className}>

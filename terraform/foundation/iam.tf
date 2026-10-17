@@ -82,10 +82,13 @@ resource "aws_iam_role_policy" "chat_api" {
         Resource = [for id in var.chat_api_bedrock_model_ids : "${local.bedrock_model_arn_prefix}/${id}"]
       },
       {
-        Sid      = "ReadClaudeKey"
-        Effect   = "Allow"
-        Action   = "secretsmanager:GetSecretValue"
-        Resource = aws_secretsmanager_secret.anthropic.arn
+        Sid    = "ReadStartupSecrets"
+        Effect = "Allow"
+        Action = "secretsmanager:GetSecretValue"
+        Resource = [
+          aws_secretsmanager_secret.anthropic.arn,
+          aws_secretsmanager_secret.servicenow.arn,
+        ]
       },
     ]
   })

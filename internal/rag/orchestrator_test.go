@@ -831,3 +831,208 @@ func TestRealQuestionStillRetrieves(t *testing.T) {
 		t.Errorf("real-question prompt is missing its <context> block")
 	}
 }
+
+// --- ticket branch (Task 5) ---
+
+type stubTicketSource struct {
+	tickets     []Ticket
+	err         error
+	called      bool
+	count       int
+	countErr    error
+	countCalled bool
+	gotWindow   CountWindow
+	created     Ticket
+	createErr   error
+	createCalls int
+	gotDraft    TicketDraft
+}
+
+func (s *stubTicketSource) LatestOpen(_ context.Context, _ team.Team, _ int) ([]Ticket, error) {
+	s.called = true
+	return s.tickets, s.err
+}
+
+func (s *stubTicketSource) CountOpened(_ context.Context, _ team.Team, w CountWindow) (int, error) {
+	s.countCalled = true
+	s.gotWindow = w
+	return s.count, s.countErr
+}
+
+func (s *stubTicketSource) Create(_ context.Context, _ team.Team, d TicketDraft) (Ticket, error) {
+	s.createCalls++
+	s.gotDraft = d
+	return s.created, s.createErr
+}
+
+type stubClassifier struct {
+	yes bool
+	err error
+}
+
+func (s stubClassifier) Classify(_ context.Context, _ string) (bool, error) { return s.yes, s.err }
+
+// answerEvents runs Answer for a question against the coupa fixtureScope and
+// returns every streamed event, failing on a non-nil error.
+func answerEvents(t *testing.T, o *Orchestrator, question string) []StreamEvent {
+	t.Helper()
+	out := make(chan StreamEvent, 64)
+	errc := make(chan error, 1)
+	go func() {
+		errc <- o.Answer(context.Background(), question, nil, fixtureScope(t), nil, out)
+		close(out)
+	}()
+	var events []StreamEvent
+	for e := range out {
+		events = append(events, e)
+	}
+	if err := <-errc; err != nil {
+		t.Fatalf("Answer: %v", err)
+	}
+	return events
+}
+
+func tokenText(events []StreamEvent) string {
+	var b strings.Builder
+	for _, e := range events {
+		if e.Type == "token" {
+			if s, ok := e.Data.(string); ok {
+				b.WriteString(s)
+			}
+		}
+	}
+	return b.String()
+}
+
+func hasType(events []StreamEvent, typ string) bool {
+	for _, e := range events {
+		if e.Type == typ {
+			return true
+		}
+	}
+	return false
+}
+
+func TestTicketBranchSummarizesFetchedTickets(t *testing.T) {
+	src := &stubTicketSource{tickets: []Ticket{{Number: "INC0012345", ShortDescription: "VPN down", State: "In Progress"}}}
+	llm := &capturingLLM{}
+	o := &Orchestrator{LLM: llm, Tickets: src}
+	events := answerEvents(t, o, "latest open ticket for coupa")
+	if !src.called {
+		t.Error("ticket source was not called")
+	}
+	if !hasType(events, "done") {
+		t.Error("no done event")
+	}
+	// The fetched ticket must reach the model prompt — the grounding of the answer.
+	if !strings.Contains(llm.prompt.User, "INC0012345") {
+		t.Errorf("ticket data did not reach the prompt; got %q", llm.prompt.User)
+	}
+	if !strings.Contains(strings.ToLower(llm.prompt.System), "ticket") {
+		t.Errorf("not the ticket system prompt: %q", llm.prompt.System)
+	}
+}
+
+func TestTicketBranchEmptyGivesHonestStatus(t *testing.T) {
+	src := &stubTicketSource{tickets: nil}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	events := answerEvents(t, o, "any open tickets?")
+	if !strings.Contains(strings.ToLower(tokenText(events)), "no open tickets") {
+		t.Errorf("empty result status = %q, want a 'no open tickets' message", tokenText(events))
+	}
+}
+
+func TestTicketBranchTransportErrorGivesHonestStatus(t *testing.T) {
+	src := &stubTicketSource{err: errors.New("boom")}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	events := answerEvents(t, o, "show me the ticket")
+	if !strings.Contains(strings.ToLower(tokenText(events)), "can't reach servicenow") {
+		t.Errorf("error status = %q, want a 'can't reach ServiceNow' message", tokenText(events))
+	}
+}
+
+func TestTicketBranchNotConfiguredGivesHonestStatus(t *testing.T) {
+	src := &stubTicketSource{err: ErrTeamNotConfigured}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	events := answerEvents(t, o, "open tickets")
+	if !strings.Contains(strings.ToLower(tokenText(events)), "isn't configured") {
+		t.Errorf("not-configured status = %q", tokenText(events))
+	}
+}
+
+func TestTicketPhrasingFallsThroughToRAGWhenDisabled(t *testing.T) {
+	llm := &capturingLLM{}
+	o := &Orchestrator{LLM: llm, Retriever: stubRetriever{sixChunks()}, TopK: 6, RerankN: 4} // Tickets nil
+	_ = answerEvents(t, o, "any open tickets?")
+	// With Tickets nil, a ticket-phrased query runs normal retrieval, which
+	// builds the grounded <context> prompt.
+	if !strings.Contains(llm.prompt.User, "<context>") {
+		t.Errorf("with Tickets nil, ticket phrasing must fall through to RAG; prompt was %q", llm.prompt.User)
+	}
+}
+
+func TestClassifierErrorFallsThroughToRAG(t *testing.T) {
+	llm := &capturingLLM{}
+	src := &stubTicketSource{}
+	o := &Orchestrator{LLM: llm, Retriever: stubRetriever{sixChunks()}, TopK: 6, RerankN: 4,
+		Tickets: src, Classifier: stubClassifier{err: errors.New("timeout")}}
+	// "what is the status please" matches no heuristic; classifier errors -> RAG.
+	_ = answerEvents(t, o, "what is the status please")
+	if src.called {
+		t.Error("classifier error must not reach the ticket source")
+	}
+	if !strings.Contains(llm.prompt.User, "<context>") {
+		t.Errorf("classifier error must fall through to RAG; prompt was %q", llm.prompt.User)
+	}
+}
+
+// --- count branch ---
+
+func TestCountBranchReportsCount(t *testing.T) {
+	src := &stubTicketSource{count: 3}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	events := answerEvents(t, o, "how many tickets opened since last week")
+	if !src.countCalled {
+		t.Fatal("count source was not called")
+	}
+	if src.gotWindow.Key != "days" || src.gotWindow.Days != 7 {
+		t.Errorf("window = %+v, want days/7", src.gotWindow)
+	}
+	txt := strings.ToLower(tokenText(events))
+	if !strings.Contains(txt, "3") || !strings.Contains(txt, "opened") || !strings.Contains(txt, "last 7 days") {
+		t.Errorf("count answer = %q, want the number, 'opened', and the window label", tokenText(events))
+	}
+	if src.called {
+		t.Error("count query must not hit the read (LatestOpen) path")
+	}
+}
+
+func TestCountBranchNotConfigured(t *testing.T) {
+	src := &stubTicketSource{countErr: ErrTeamNotConfigured}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	events := answerEvents(t, o, "how many incidents opened today")
+	if !strings.Contains(strings.ToLower(tokenText(events)), "isn't configured") {
+		t.Errorf("not-configured status = %q", tokenText(events))
+	}
+}
+
+func TestCountBranchTransportError(t *testing.T) {
+	src := &stubTicketSource{countErr: errors.New("boom")}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	events := answerEvents(t, o, "how many tickets opened this month")
+	if !strings.Contains(strings.ToLower(tokenText(events)), "can't reach servicenow") {
+		t.Errorf("error status = %q", tokenText(events))
+	}
+}
+
+func TestReadStillWinsForNonCountTicketQuery(t *testing.T) {
+	src := &stubTicketSource{tickets: []Ticket{{Number: "INC1"}}}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	_ = answerEvents(t, o, "show me my open tickets")
+	if src.countCalled {
+		t.Error("a non-count ticket query must not hit the count path")
+	}
+	if !src.called {
+		t.Error("a plain ticket query must still hit the read path")
+	}
+}

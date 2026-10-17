@@ -93,3 +93,25 @@ The user has greeted you or made small talk; no documentation was searched. Repl
 func BuildConversationalPrompt(question string, history []Turn) Prompt {
 	return Prompt{System: conversationalPrompt, History: history, User: "Question: " + question}
 }
+
+const ticketSystemPrompt = `You are a knowledge assistant. The user asked about their team's open support tickets. The live open tickets are given below as data — this is the only source; no documents were searched.
+
+Write a short summary:
+- Lead with one sentence (how many open tickets, and the most pressing one).
+- Then one markdown bullet per ticket: its number in backticks, the short description, state, and priority.
+- Reproduce ticket numbers, states and priorities exactly. Never invent a ticket, field or detail. Do not add tickets that are not listed.
+- If a ticket has a URL, you may reference its number as the link text.`
+
+// BuildTicketPrompt returns the model input for summarizing fetched tickets.
+// There is no <context> document block — tickets are the grounding.
+func BuildTicketPrompt(question string, history []Turn, tickets []Ticket) Prompt {
+	var b strings.Builder
+	b.WriteString("<tickets>\n")
+	for i, t := range tickets {
+		fmt.Fprintf(&b, "[%d] number=%s state=%q priority=%q opened=%q updated=%q url=%s\n%s\n---\n",
+			i+1, t.Number, t.State, t.Priority, t.OpenedOn, t.UpdatedOn, t.URL, t.ShortDescription)
+	}
+	b.WriteString("</tickets>\n\n")
+	fmt.Fprintf(&b, "Question: %s", question)
+	return Prompt{System: ticketSystemPrompt, History: history, User: b.String()}
+}

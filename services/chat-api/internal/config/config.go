@@ -85,6 +85,24 @@ type Config struct {
 	// one line per chunk plus the whole prompt -- so it is off unless an
 	// operator is watching a query go through. KA_TRACE=1.
 	Trace bool
+	// ServiceNow* configure the live ticket-lookup feature (default off). The
+	// password is read from Secrets Manager via ServiceNowSecretID in AWS, or
+	// from ServiceNowPassword for local dev; never both on a given deploy.
+	ServiceNowMode     string
+	ServiceNowURL      string
+	ServiceNowUser     string
+	ServiceNowSecretID string
+	ServiceNowPassword string
+	ServiceNowLimit    int
+	ServiceNowTimeout  time.Duration
+	// ServiceNowClassify selects the optional LLM ticket-intent fallback:
+	// "off" (heuristic only), "ollama", or "bedrock". It reuses the rewrite
+	// model/endpoint config.
+	ServiceNowClassify string
+	// TeamMetadata is the raw KA_TEAM_METADATA JSON (slug -> {serviceNowGroup,
+	// contact}); parsed at startup. Plain config in all environments, not a
+	// secret.
+	TeamMetadata string
 }
 
 func Load() Config {
@@ -121,6 +139,16 @@ func Load() Config {
 		QueryLogBucket: os.Getenv("KA_QUERYLOG_BUCKET"),
 		AdminUsers:     envList("KA_ADMIN_USERS"),
 		Trace:          envBool("KA_TRACE", false),
+
+		ServiceNowMode:     envOr("KA_SERVICENOW_MODE", "off"),
+		ServiceNowURL:      os.Getenv("KA_SERVICENOW_URL"),
+		ServiceNowUser:     os.Getenv("KA_SERVICENOW_USER"),
+		ServiceNowSecretID: os.Getenv("KA_SERVICENOW_SECRET_ID"),
+		ServiceNowPassword: os.Getenv("KA_SERVICENOW_PASSWORD"),
+		ServiceNowLimit:    envInt("KA_SERVICENOW_LIMIT", 5),
+		ServiceNowTimeout:  envDuration("KA_SERVICENOW_TIMEOUT", 15*time.Second),
+		ServiceNowClassify: envOr("KA_SERVICENOW_CLASSIFY", "off"),
+		TeamMetadata:       os.Getenv("KA_TEAM_METADATA"),
 	}
 }
 
