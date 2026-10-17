@@ -11,3 +11,17 @@ resource "aws_secretsmanager_secret" "anthropic" {
     prevent_destroy = true
   }
 }
+
+# ServiceNow integration-user password for the live ticket feature. Same
+# value-stays-out-of-state pattern as the Anthropic key: chat-api reads it at
+# startup via KA_SERVICENOW_SECRET_ID with its pod role. Store a plaintext
+# password (the loader also accepts a single-key JSON object).
+resource "aws_secretsmanager_secret" "servicenow" {
+  name                    = var.servicenow_secret_name
+  description             = "ServiceNow integration-user password, read by chat-api at startup"
+  recovery_window_in_days = var.secret_recovery_window_days
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

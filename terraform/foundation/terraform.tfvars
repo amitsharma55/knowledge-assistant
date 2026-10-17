@@ -31,6 +31,7 @@ ecr_keep_tagged_images   = 10
 ecr_untagged_expiry_days = 1
 
 anthropic_secret_name       = "ka/anthropic-api-key"
+servicenow_secret_name      = "ka/servicenow-password"
 secret_recovery_window_days = 7
 
 # ---- iam ----

@@ -38,6 +38,13 @@ mock_provider "aws" {
   }
 
   override_resource {
+    target = aws_secretsmanager_secret.servicenow
+    values = {
+      arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:zz/servicenow-def456"
+    }
+  }
+
+  override_resource {
     target = module.docs_bucket.aws_s3_bucket.this
     values = {
       arn = "arn:aws:s3:::zz-docs-123456789012"
@@ -89,6 +96,7 @@ variables {
   ecr_keep_tagged_images       = 10
   ecr_untagged_expiry_days     = 1
   anthropic_secret_name        = "zz/anthropic"
+  servicenow_secret_name       = "zz/servicenow"
   secret_recovery_window_days  = 7
 
   # iam
@@ -245,8 +253,11 @@ run "chat_api_invokes_only_configured_models_and_reads_its_secret" {
   }
 
   assert {
-    condition     = jsondecode(aws_iam_role_policy.chat_api.policy).Statement[1].Resource == aws_secretsmanager_secret.anthropic.arn
-    error_message = "chat-api must read only the Claude key secret."
+    condition = jsondecode(aws_iam_role_policy.chat_api.policy).Statement[1].Resource == [
+      aws_secretsmanager_secret.anthropic.arn,
+      aws_secretsmanager_secret.servicenow.arn,
+    ]
+    error_message = "chat-api must read only the Claude key and ServiceNow password secrets."
   }
 
   assert {

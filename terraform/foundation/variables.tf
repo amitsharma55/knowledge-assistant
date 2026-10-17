@@ -144,6 +144,11 @@ variable "anthropic_secret_name" {
   type        = string
 }
 
+variable "servicenow_secret_name" {
+  description = "Secrets Manager name of the ServiceNow integration-user password chat-api reads at startup."
+  type        = string
+}
+
 variable "secret_recovery_window_days" {
   description = "Days a deleted secret can still be restored: 0, or 7 to 30."
   type        = number

@@ -16,6 +16,7 @@ fail() { echo "FAIL: $*"; exit 1; }
 chat=arn:aws:iam::123456789012:role/zz-chat-api
 ingest=arn:aws:iam::123456789012:role/zz-ingestion
 secret=arn:aws:secretsmanager:us-east-1:123456789012:secret:zz/anthropic-AbCdEf
+sn_secret=arn:aws:secretsmanager:us-east-1:123456789012:secret:zz/servicenow-XyZ123
 model=arn:aws:bedrock:us-east-1::foundation-model
 docs_object=arn:aws:s3:::zz-docs-123456789012/probe.md
 
@@ -25,6 +26,7 @@ cat >"$VERIFY_OUTPUTS_JSON" <<EOF
   "pod_role_arns": {"value": {"chat-api": "$chat", "ingestion": "$ingest", "aws-lb-controller": "arn:aws:iam::123456789012:role/zz-aws-lb-controller"}},
   "docs_bucket": {"value": "zz-docs-123456789012"},
   "anthropic_secret_arn": {"value": "$secret"},
+  "servicenow_secret_arn": {"value": "$sn_secret"},
   "verify_expectations": {"value": {
     "budget_name": "zz-monthly",
     "budget_limit_usd": 50,
@@ -42,6 +44,7 @@ grant_spec() {
 $chat bedrock:InvokeModel $model/zz.embed-v1 allowed
 $chat bedrock:InvokeModel $model/zz.chat-v1 allowed
 $chat secretsmanager:GetSecretValue $secret allowed
+$chat secretsmanager:GetSecretValue $sn_secret allowed
 $ingest bedrock:InvokeModel $model/zz.embed-v1 allowed
 $ingest s3:GetObject $docs_object allowed
 EOF
