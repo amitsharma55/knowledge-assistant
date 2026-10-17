@@ -199,7 +199,20 @@ down() {
   # deletes the real ALB and its ENIs. Skipping this makes 4a's later
   # `terraform destroy` hang on subnet/ENI dependencies. This is the primitive
   # 4c's evening-down sequences before destroying the daily stack.
-  kubectl -n knowledge-assistant delete ingress ka --ignore-not-found --wait=true
+  #
+  # Bounded wait + finalizer fallback: the controller clears the
+  # ingress.k8s.aws/resources finalizer in well under a minute once the ALB is
+  # gone, but it can wedge forever retrying to delete a now-orphaned target
+  # group that AWS briefly reports ResourceInUse -- an unbounded --wait then
+  # hangs the whole teardown. By that point the ALB and its ENIs are already
+  # gone (the finalizer is all that's left), so on timeout we strip the
+  # finalizer: a bare empty target group holds no ENIs and never blocks
+  # `terraform destroy`.
+  if ! kubectl -n knowledge-assistant delete ingress ka --ignore-not-found --wait=true --timeout=120s; then
+    echo "ingress delete timed out; stripping finalizer (ALB/ENIs are already gone)"
+    kubectl -n knowledge-assistant patch ingress ka --type=merge \
+      -p '{"metadata":{"finalizers":[]}}' 2>/dev/null || true
+  fi
   kubectl delete namespace knowledge-assistant --ignore-not-found
   helm -n kube-system uninstall aws-load-balancer-controller >/dev/null 2>&1 || true
   echo "Ingress/ALB released and workloads deleted. Safe to 'terraform destroy' the daily stack."
