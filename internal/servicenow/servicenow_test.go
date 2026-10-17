@@ -133,6 +133,58 @@ func TestCountOpenedSinceErrorsOnNon2xx(t *testing.T) {
 	}
 }
 
+func TestCreateSendsBodyAndMapsResult(t *testing.T) {
+	var gotMethod, gotInputDisplay string
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotInputDisplay = r.URL.Query().Get("sysparm_input_display_value")
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]string{
+			"number": "INC0099999", "short_description": "email server down",
+			"priority": "2 - High", "sys_id": "newid42",
+		}})
+	}))
+	defer srv.Close()
+
+	c := Client{BaseURL: srv.URL, User: "svc", Password: "pw", HTTP: srv.Client()}
+	inc, err := c.Create(context.Background(), "Star Support", "email server down", "2", "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if gotInputDisplay != "true" {
+		t.Errorf("sysparm_input_display_value = %q, want true", gotInputDisplay)
+	}
+	if gotBody["short_description"] != "email server down" ||
+		gotBody["assignment_group"] != "Star Support" ||
+		gotBody["priority"] != "2" {
+		t.Errorf("posted body = %+v, want the issue, group, and priority", gotBody)
+	}
+	if _, ok := gotBody["caller_id"]; ok {
+		t.Errorf("empty caller must be omitted; body = %+v", gotBody)
+	}
+	if inc.Number != "INC0099999" {
+		t.Errorf("created number = %q, want INC0099999", inc.Number)
+	}
+	if !strings.HasPrefix(inc.URL, srv.URL) || !strings.Contains(inc.URL, "newid42") {
+		t.Errorf("created URL = %q, want it to point at the new sys_id", inc.URL)
+	}
+}
+
+func TestCreateErrorsOnNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	c := Client{BaseURL: srv.URL, User: "x", Password: "y", HTTP: srv.Client()}
+	if _, err := c.Create(context.Background(), "G", "down", "3", ""); err == nil {
+		t.Fatal("Create on 403 = nil error, want an error")
+	}
+}
+
 func TestLatestOpenErrorsOnNon2xx(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

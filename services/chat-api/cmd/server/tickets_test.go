@@ -16,6 +16,10 @@ type stubSNClient struct {
 	count        int
 	gotWindowKey string
 	gotDays      int
+	created      servicenow.Incident
+	gotShortDesc string
+	gotPriority  string
+	gotCaller    string
 }
 
 func (s *stubSNClient) LatestOpen(_ context.Context, group string, _ int) ([]servicenow.Incident, error) {
@@ -28,6 +32,14 @@ func (s *stubSNClient) CountOpenedSince(_ context.Context, group, windowKey stri
 	s.gotWindowKey = windowKey
 	s.gotDays = days
 	return s.count, nil
+}
+
+func (s *stubSNClient) Create(_ context.Context, group, shortDescription, priority, caller string) (servicenow.Incident, error) {
+	s.gotGroup = group
+	s.gotShortDesc = shortDescription
+	s.gotPriority = priority
+	s.gotCaller = caller
+	return s.created, nil
 }
 
 func starTeam(t *testing.T) (team.Team, *team.Registry) {
@@ -86,6 +98,34 @@ func TestTicketSourceCountResolvesGroupAndWindow(t *testing.T) {
 	}
 	if cli.gotGroup != "Star Reporting" || cli.gotWindowKey != "days" || cli.gotDays != 7 {
 		t.Errorf("client got group=%q key=%q days=%d, want Star Reporting/days/7", cli.gotGroup, cli.gotWindowKey, cli.gotDays)
+	}
+}
+
+func TestTicketSourceCreateResolvesGroupAndMaps(t *testing.T) {
+	tm, reg := starTeam(t)
+	cli := &stubSNClient{created: servicenow.Incident{Number: "INC9", URL: "u9"}}
+	src := ticketSource{reg: reg, cli: cli}
+	got, err := src.Create(context.Background(), tm, rag.TicketDraft{ShortDescription: "email down", Priority: "2"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if cli.gotGroup != "Star Reporting" || cli.gotShortDesc != "email down" || cli.gotPriority != "2" {
+		t.Errorf("client got group=%q desc=%q prio=%q", cli.gotGroup, cli.gotShortDesc, cli.gotPriority)
+	}
+	if cli.gotCaller != "" {
+		t.Errorf("caller = %q, want empty for now", cli.gotCaller)
+	}
+	if got.Number != "INC9" || got.URL != "u9" {
+		t.Errorf("mapped ticket = %+v", got)
+	}
+}
+
+func TestTicketSourceCreateEmptyGroupIsNotConfigured(t *testing.T) {
+	reg := team.NewRegistry([]team.Info{{Slug: "star", DisplayName: "Star"}})
+	tm, _ := reg.Parse("star")
+	src := ticketSource{reg: reg, cli: &stubSNClient{}}
+	if _, err := src.Create(context.Background(), tm, rag.TicketDraft{ShortDescription: "x", Priority: "3"}); !errors.Is(err, rag.ErrTeamNotConfigured) {
+		t.Errorf("err = %v, want ErrTeamNotConfigured", err)
 	}
 }
 

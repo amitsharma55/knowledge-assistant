@@ -1,8 +1,10 @@
-// Package servicenow is a thin, read-only client for the ServiceNow Table API.
-// It fetches open incidents for an assignment group; it never writes.
+// Package servicenow is a thin client for the ServiceNow Table API. It fetches
+// open incidents for an assignment group and, via Create, files a new one; the
+// write happens only behind the chat confirm-before-file flow.
 package servicenow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -104,6 +106,81 @@ func (c Client) LatestOpen(ctx context.Context, group string, limit int) ([]Inci
 		})
 	}
 	return incs, nil
+}
+
+// Create files a new incident for the assignment group and returns it (number
+// and link). group and priority are sent as display values
+// (sysparm_input_display_value=true), matching the read query's convention, so
+// the group goes by name and the priority by its number. caller is best-effort:
+// omitted when empty, since the dev identity isn't yet a resolvable sys_user.
+func (c Client) Create(ctx context.Context, group, shortDescription, priority, caller string) (Incident, error) {
+	u, err := url.Parse(strings.TrimSuffix(c.BaseURL, "/") + "/api/now/table/incident")
+	if err != nil {
+		return Incident{}, fmt.Errorf("servicenow: parse base url %q: %w", c.BaseURL, err)
+	}
+	q := url.Values{}
+	// Input display values so assignment_group matches by name and priority by
+	// its number, the same display convention LatestOpen reads back.
+	q.Set("sysparm_input_display_value", "true")
+	q.Set("sysparm_fields", "number,short_description,state,priority,sys_updated_on,opened_at,sys_id")
+	u.RawQuery = q.Encode()
+
+	payload := map[string]string{
+		"short_description": shortDescription,
+		"assignment_group":  group,
+		"priority":          priority,
+	}
+	if caller != "" {
+		payload["caller_id"] = caller
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return Incident{}, fmt.Errorf("servicenow: encode incident: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(body))
+	if err != nil {
+		return Incident{}, fmt.Errorf("servicenow: %w", err)
+	}
+	req.SetBasicAuth(c.User, c.Password)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client().Do(req)
+	if err != nil {
+		return Incident{}, fmt.Errorf("servicenow: POST incident: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return Incident{}, fmt.Errorf("servicenow: %s returned %d: %s (the integration user needs incident create rights)",
+			u.Path, resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+
+	var out struct {
+		Result struct {
+			Number           string `json:"number"`
+			ShortDescription string `json:"short_description"`
+			State            string `json:"state"`
+			Priority         string `json:"priority"`
+			SysUpdatedOn     string `json:"sys_updated_on"`
+			OpenedAt         string `json:"opened_at"`
+			SysID            string `json:"sys_id"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return Incident{}, fmt.Errorf("servicenow: decode create response: %w", err)
+	}
+	r := out.Result
+	return Incident{
+		Number:           r.Number,
+		ShortDescription: r.ShortDescription,
+		State:            r.State,
+		Priority:         r.Priority,
+		UpdatedOn:        r.SysUpdatedOn,
+		OpenedOn:         r.OpenedAt,
+		URL:              strings.TrimSuffix(c.BaseURL, "/") + "/incident.do?sys_id=" + r.SysID,
+	}, nil
 }
 
 // openedSinceExpr maps a window key to a ServiceNow encoded-query bound on

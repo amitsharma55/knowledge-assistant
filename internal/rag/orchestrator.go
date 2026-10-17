@@ -107,6 +107,16 @@ func snippet(s string, n int) string {
 // non-nil, its chunks are included first (user's uploaded doc = explicit
 // intent), then filled with the primary retriever's chunks up to RerankN.
 func (o *Orchestrator) Answer(ctx context.Context, question string, history []Turn, scope Scope, session Retriever, out chan<- StreamEvent) error {
+	// Ticket creation is a confirm-before-write conversation, routed before
+	// every other gate. It fires on a fresh create request OR when a create is
+	// already in progress — the follow-up answers ("high", "confirm") contain
+	// no create keyword, so only createInProgress carries them here. Checked
+	// before the read heuristic so "create a ticket" isn't swallowed by read's
+	// ticket/incident match.
+	if o.Tickets != nil && (isCreateTicketQuery(question) || createInProgress(history)) {
+		return o.answerCreateTicket(ctx, question, history, scope, out)
+	}
+
 	// A greeting or pleasantry ("hi", "how are you?", "thanks") gets a warm
 	// reply and no document search: retrieval scores can't tell small talk
 	// from a real question on this embedder, so we gate on the message itself,
@@ -500,6 +510,63 @@ func (o *Orchestrator) answerTickets(ctx context.Context, question string, histo
 	}
 	out <- StreamEvent{Type: "done"}
 	return nil
+}
+
+// answerCreateTicket runs the deterministic create state machine: it derives
+// the phase from (history, message), emits the next prompt or the draft, and —
+// only in the confirm phase, on an affirmative reply — files the incident. No
+// LLM is involved: every string is a template, so no fabricated field can reach
+// a write, and the write is testable. No stored state: the fields are read back
+// from history, so a later stray "yes" (whose prior turn is "Filed INC…", not a
+// draft) starts a fresh request rather than filing twice.
+func (o *Orchestrator) answerCreateTicket(ctx context.Context, message string, history []Turn, scope Scope, out chan<- StreamEvent) error {
+	// Like the other ticket branches: no retrieval, so the context panel is
+	// explicitly empty rather than stale.
+	out <- StreamEvent{Type: "retrieval", Data: []RetrievedChunk{}}
+	out <- StreamEvent{Type: "citation", Data: []Chunk{}}
+
+	team := scope.Team().Slug()
+	phase, issue, priority := draftFromHistory(history, message)
+	switch phase {
+	case "issue":
+		o.streamStatus(out, issuePrompt)
+	case "severity":
+		o.streamStatus(out, severityPrompt)
+	case "draft":
+		o.streamStatus(out, draftText(team, issue, priority))
+	case "confirm":
+		switch {
+		case isAffirmative(message):
+			o.fileTicket(ctx, scope, issue, priority, out)
+		case isCancel(message):
+			o.streamStatus(out, "Cancelled — nothing was filed.")
+		default:
+			// Any other reply: re-show the draft rather than guess intent.
+			o.streamStatus(out, draftText(team, issue, priority))
+		}
+	}
+	out <- StreamEvent{Type: "done"}
+	return nil
+}
+
+// fileTicket performs the one write in the create flow. On failure it leaves no
+// partial state: the draft stays reconstructable from history, so the user can
+// retry with "confirm".
+func (o *Orchestrator) fileTicket(ctx context.Context, scope Scope, issue, priority string, out chan<- StreamEvent) {
+	t, err := o.Tickets.Create(ctx, scope.Team(), TicketDraft{ShortDescription: issue, Priority: priority})
+	switch {
+	case errors.Is(err, ErrTeamNotConfigured):
+		o.streamStatus(out, "Ticket creation isn't configured for "+scope.Team().Slug()+".")
+	case err != nil:
+		o.logger().Warn("servicenow create failed", "err", err, "team", scope.Team().Slug())
+		o.streamStatus(out, "Couldn't file the ticket in ServiceNow right now — try again in a moment.")
+	default:
+		msg := "Filed " + t.Number
+		if t.URL != "" {
+			msg += " — " + t.URL
+		}
+		o.streamStatus(out, msg)
+	}
 }
 
 // streamStatus sends a plain status line as a single token, so it is persisted

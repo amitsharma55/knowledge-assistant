@@ -13,6 +13,7 @@ import (
 type snClient interface {
 	LatestOpen(ctx context.Context, group string, limit int) ([]servicenow.Incident, error)
 	CountOpenedSince(ctx context.Context, group, windowKey string, days int) (int, error)
+	Create(ctx context.Context, group, shortDescription, priority, caller string) (servicenow.Incident, error)
 }
 
 // ticketSource adapts a ServiceNow client to rag.TicketSource: it resolves the
@@ -53,4 +54,26 @@ func (s ticketSource) CountOpened(ctx context.Context, t team.Team, w rag.CountW
 		return 0, rag.ErrTeamNotConfigured
 	}
 	return s.cli.CountOpenedSince(ctx, group, w.Key, w.Days)
+}
+
+func (s ticketSource) Create(ctx context.Context, t team.Team, d rag.TicketDraft) (rag.Ticket, error) {
+	group := s.reg.Info(t).ServiceNowGroup
+	if group == "" {
+		return rag.Ticket{}, rag.ErrTeamNotConfigured
+	}
+	// Caller is left empty for now: the dev identity is an email, not a
+	// resolvable sys_user. Wiring a resolvable caller is a later refinement.
+	inc, err := s.cli.Create(ctx, group, d.ShortDescription, d.Priority, "")
+	if err != nil {
+		return rag.Ticket{}, err
+	}
+	return rag.Ticket{
+		Number:           inc.Number,
+		ShortDescription: inc.ShortDescription,
+		State:            inc.State,
+		Priority:         inc.Priority,
+		UpdatedOn:        inc.UpdatedOn,
+		OpenedOn:         inc.OpenedOn,
+		URL:              inc.URL,
+	}, nil
 }

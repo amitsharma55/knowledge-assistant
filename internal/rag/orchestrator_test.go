@@ -842,6 +842,10 @@ type stubTicketSource struct {
 	countErr    error
 	countCalled bool
 	gotWindow   CountWindow
+	created     Ticket
+	createErr   error
+	createCalls int
+	gotDraft    TicketDraft
 }
 
 func (s *stubTicketSource) LatestOpen(_ context.Context, _ team.Team, _ int) ([]Ticket, error) {
@@ -853,6 +857,12 @@ func (s *stubTicketSource) CountOpened(_ context.Context, _ team.Team, w CountWi
 	s.countCalled = true
 	s.gotWindow = w
 	return s.count, s.countErr
+}
+
+func (s *stubTicketSource) Create(_ context.Context, _ team.Team, d TicketDraft) (Ticket, error) {
+	s.createCalls++
+	s.gotDraft = d
+	return s.created, s.createErr
 }
 
 type stubClassifier struct {
