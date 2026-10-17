@@ -126,6 +126,13 @@ func (o *Orchestrator) Answer(ctx context.Context, question string, history []Tu
 		return nil
 	}
 
+	// A date-scoped count ("how many opened since last week") is answered by an
+	// aggregate query, not a listing. Checked before the read branch because
+	// the phrasing also contains "ticket"/"incident".
+	if o.Tickets != nil && isCountQuery(question) {
+		return o.answerCountTickets(ctx, question, scope, out)
+	}
+
 	// Ticket intent routes to a live ServiceNow lookup instead of retrieval.
 	// Gated on Tickets being configured so ticket phrasing is a normal question
 	// when the feature is off. Decided on intent only; the team is the scope's,
@@ -499,4 +506,29 @@ func (o *Orchestrator) answerTickets(ctx context.Context, question string, histo
 // and rendered exactly like a normal answer.
 func (o *Orchestrator) streamStatus(out chan<- StreamEvent, msg string) {
 	out <- StreamEvent{Type: "token", Data: msg}
+}
+
+// answerCountTickets answers a date-scoped count with an aggregate query and a
+// deterministic one-line reply — no LLM, so the number is exactly ServiceNow's.
+func (o *Orchestrator) answerCountTickets(ctx context.Context, question string, scope Scope, out chan<- StreamEvent) error {
+	out <- StreamEvent{Type: "retrieval", Data: []RetrievedChunk{}}
+	out <- StreamEvent{Type: "citation", Data: []Chunk{}}
+
+	w := parseCountWindow(question)
+	n, err := o.Tickets.CountOpened(ctx, scope.Team(), w)
+	switch {
+	case errors.Is(err, ErrTeamNotConfigured):
+		o.streamStatus(out, "Ticket lookup isn't configured for "+scope.Team().Slug()+".")
+	case err != nil:
+		o.logger().Warn("servicenow count failed", "err", err, "team", scope.Team().Slug())
+		o.streamStatus(out, "Can't reach ServiceNow right now — try again in a moment.")
+	default:
+		noun := "incidents were"
+		if n == 1 {
+			noun = "incident was"
+		}
+		o.streamStatus(out, fmt.Sprintf("%d %s opened for %s %s.", n, noun, scope.Team().Slug(), w.Label))
+	}
+	out <- StreamEvent{Type: "done"}
+	return nil
 }

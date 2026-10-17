@@ -12,6 +12,7 @@ import (
 // can stub it.
 type snClient interface {
 	LatestOpen(ctx context.Context, group string, limit int) ([]servicenow.Incident, error)
+	CountOpenedSince(ctx context.Context, group, windowKey string, days int) (int, error)
 }
 
 // ticketSource adapts a ServiceNow client to rag.TicketSource: it resolves the
@@ -39,8 +40,17 @@ func (s ticketSource) LatestOpen(ctx context.Context, t team.Team, limit int) ([
 			State:            in.State,
 			Priority:         in.Priority,
 			UpdatedOn:        in.UpdatedOn,
+			OpenedOn:         in.OpenedOn,
 			URL:              in.URL,
 		}
 	}
 	return out, nil
+}
+
+func (s ticketSource) CountOpened(ctx context.Context, t team.Team, w rag.CountWindow) (int, error) {
+	group := s.reg.Info(t).ServiceNowGroup
+	if group == "" {
+		return 0, rag.ErrTeamNotConfigured
+	}
+	return s.cli.CountOpenedSince(ctx, group, w.Key, w.Days)
 }

@@ -835,14 +835,24 @@ func TestRealQuestionStillRetrieves(t *testing.T) {
 // --- ticket branch (Task 5) ---
 
 type stubTicketSource struct {
-	tickets []Ticket
-	err     error
-	called  bool
+	tickets     []Ticket
+	err         error
+	called      bool
+	count       int
+	countErr    error
+	countCalled bool
+	gotWindow   CountWindow
 }
 
 func (s *stubTicketSource) LatestOpen(_ context.Context, _ team.Team, _ int) ([]Ticket, error) {
 	s.called = true
 	return s.tickets, s.err
+}
+
+func (s *stubTicketSource) CountOpened(_ context.Context, _ team.Team, w CountWindow) (int, error) {
+	s.countCalled = true
+	s.gotWindow = w
+	return s.count, s.countErr
 }
 
 type stubClassifier struct {
@@ -963,5 +973,56 @@ func TestClassifierErrorFallsThroughToRAG(t *testing.T) {
 	}
 	if !strings.Contains(llm.prompt.User, "<context>") {
 		t.Errorf("classifier error must fall through to RAG; prompt was %q", llm.prompt.User)
+	}
+}
+
+// --- count branch ---
+
+func TestCountBranchReportsCount(t *testing.T) {
+	src := &stubTicketSource{count: 3}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	events := answerEvents(t, o, "how many tickets opened since last week")
+	if !src.countCalled {
+		t.Fatal("count source was not called")
+	}
+	if src.gotWindow.Key != "days" || src.gotWindow.Days != 7 {
+		t.Errorf("window = %+v, want days/7", src.gotWindow)
+	}
+	txt := strings.ToLower(tokenText(events))
+	if !strings.Contains(txt, "3") || !strings.Contains(txt, "opened") || !strings.Contains(txt, "last 7 days") {
+		t.Errorf("count answer = %q, want the number, 'opened', and the window label", tokenText(events))
+	}
+	if src.called {
+		t.Error("count query must not hit the read (LatestOpen) path")
+	}
+}
+
+func TestCountBranchNotConfigured(t *testing.T) {
+	src := &stubTicketSource{countErr: ErrTeamNotConfigured}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	events := answerEvents(t, o, "how many incidents opened today")
+	if !strings.Contains(strings.ToLower(tokenText(events)), "isn't configured") {
+		t.Errorf("not-configured status = %q", tokenText(events))
+	}
+}
+
+func TestCountBranchTransportError(t *testing.T) {
+	src := &stubTicketSource{countErr: errors.New("boom")}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	events := answerEvents(t, o, "how many tickets opened this month")
+	if !strings.Contains(strings.ToLower(tokenText(events)), "can't reach servicenow") {
+		t.Errorf("error status = %q", tokenText(events))
+	}
+}
+
+func TestReadStillWinsForNonCountTicketQuery(t *testing.T) {
+	src := &stubTicketSource{tickets: []Ticket{{Number: "INC1"}}}
+	o := &Orchestrator{LLM: &capturingLLM{}, Tickets: src}
+	_ = answerEvents(t, o, "show me my open tickets")
+	if src.countCalled {
+		t.Error("a non-count ticket query must not hit the count path")
+	}
+	if !src.called {
+		t.Error("a plain ticket query must still hit the read path")
 	}
 }

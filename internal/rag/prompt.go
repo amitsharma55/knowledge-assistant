@@ -108,8 +108,8 @@ func BuildTicketPrompt(question string, history []Turn, tickets []Ticket) Prompt
 	var b strings.Builder
 	b.WriteString("<tickets>\n")
 	for i, t := range tickets {
-		fmt.Fprintf(&b, "[%d] number=%s state=%q priority=%q updated=%q url=%s\n%s\n---\n",
-			i+1, t.Number, t.State, t.Priority, t.UpdatedOn, t.URL, t.ShortDescription)
+		fmt.Fprintf(&b, "[%d] number=%s state=%q priority=%q opened=%q updated=%q url=%s\n%s\n---\n",
+			i+1, t.Number, t.State, t.Priority, t.OpenedOn, t.UpdatedOn, t.URL, t.ShortDescription)
 	}
 	b.WriteString("</tickets>\n\n")
 	fmt.Fprintf(&b, "Question: %s", question)
