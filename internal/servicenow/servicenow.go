@@ -108,11 +108,35 @@ func (c Client) LatestOpen(ctx context.Context, group string, limit int) ([]Inci
 	return incs, nil
 }
 
+// impactUrgencyFor maps a ServiceNow priority number (1..4) to the (impact,
+// urgency) display values that compute it.
+//
+// priority is a *calculated* field on incident (derived from impact × urgency
+// by the stock Priority Lookup rules), so a direct priority write is silently
+// dropped — setting it to "3" yielded a priority-4 incident on the dev
+// instance. We set impact and urgency instead and let ServiceNow derive the
+// priority. The display strings are the stock choice labels; combos verified
+// against the dev instance (1/1→P1, 1/2→P2, 2/2→P3, 2/3→P4). Unknown input
+// falls back to Moderate.
+func impactUrgencyFor(priority string) (impact, urgency string) {
+	switch priority {
+	case "1":
+		return "1 - High", "1 - High"
+	case "2":
+		return "1 - High", "2 - Medium"
+	case "4":
+		return "2 - Medium", "3 - Low"
+	default: // "3" and anything unmapped
+		return "2 - Medium", "2 - Medium"
+	}
+}
+
 // Create files a new incident for the assignment group and returns it (number
-// and link). group and priority are sent as display values
+// and link). Fields are sent as display values
 // (sysparm_input_display_value=true), matching the read query's convention, so
-// the group goes by name and the priority by its number. caller is best-effort:
-// omitted when empty, since the dev identity isn't yet a resolvable sys_user.
+// the group goes by name. Priority is set via impact/urgency (see
+// impactUrgencyFor). caller is best-effort: omitted when empty, since the dev
+// identity isn't yet a resolvable sys_user.
 func (c Client) Create(ctx context.Context, group, shortDescription, priority, caller string) (Incident, error) {
 	u, err := url.Parse(strings.TrimSuffix(c.BaseURL, "/") + "/api/now/table/incident")
 	if err != nil {
@@ -125,10 +149,12 @@ func (c Client) Create(ctx context.Context, group, shortDescription, priority, c
 	q.Set("sysparm_fields", "number,short_description,state,priority,sys_updated_on,opened_at,sys_id")
 	u.RawQuery = q.Encode()
 
+	impact, urgency := impactUrgencyFor(priority)
 	payload := map[string]string{
 		"short_description": shortDescription,
 		"assignment_group":  group,
-		"priority":          priority,
+		"impact":            impact,
+		"urgency":           urgency,
 	}
 	if caller != "" {
 		payload["caller_id"] = caller

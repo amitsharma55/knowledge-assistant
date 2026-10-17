@@ -158,10 +158,15 @@ func TestCreateSendsBodyAndMapsResult(t *testing.T) {
 	if gotInputDisplay != "true" {
 		t.Errorf("sysparm_input_display_value = %q, want true", gotInputDisplay)
 	}
+	// priority is calculated from impact/urgency, so we set those instead:
+	// priority 2 (High) == impact "1 - High", urgency "2 - Medium".
 	if gotBody["short_description"] != "email server down" ||
 		gotBody["assignment_group"] != "Star Support" ||
-		gotBody["priority"] != "2" {
-		t.Errorf("posted body = %+v, want the issue, group, and priority", gotBody)
+		gotBody["impact"] != "1 - High" || gotBody["urgency"] != "2 - Medium" {
+		t.Errorf("posted body = %+v, want the issue, group, and impact/urgency for priority 2", gotBody)
+	}
+	if _, ok := gotBody["priority"]; ok {
+		t.Errorf("priority must not be sent directly (it is calculated); body = %+v", gotBody)
 	}
 	if _, ok := gotBody["caller_id"]; ok {
 		t.Errorf("empty caller must be omitted; body = %+v", gotBody)
