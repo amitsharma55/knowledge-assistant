@@ -161,8 +161,9 @@ Env-driven, same helpers as today:
 - `KA_SERVICENOW_USER` — integration user id.
 - `KA_SERVICENOW_SECRET_ID` — Secrets Manager secret id holding the password (AWS).
 - `KA_SERVICENOW_PASSWORD` — password for local dev only.
-- `KA_SERVICENOW_CLASSIFY` — `off` (default) / `on`. Enables the LLM intent
-  classifier fallback; off = heuristic-only gate.
+- `KA_SERVICENOW_CLASSIFY` — `off` (default) / `ollama` / `bedrock`. Enables the
+  LLM intent classifier fallback and selects its backend (reusing the rewrite
+  model/endpoint config); off = heuristic-only gate.
 - `KA_SERVICENOW_LIMIT` — max tickets fetched/summarized (default 5).
 - `KA_TEAM_METADATA` — JSON object, team slug → `{serviceNowGroup, contact}`.
   Plain config in both local and AWS (not a secret). Empty = no team has a

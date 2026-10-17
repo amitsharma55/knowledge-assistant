@@ -14,6 +14,7 @@ import (
 
 	"github.com/example/knowledge-assistant/internal/awsx"
 	"github.com/example/knowledge-assistant/internal/chunker"
+	"github.com/example/knowledge-assistant/internal/classify"
 	"github.com/example/knowledge-assistant/internal/embed"
 	"github.com/example/knowledge-assistant/internal/index"
 	"github.com/example/knowledge-assistant/internal/osclient"
@@ -247,6 +248,27 @@ func main() {
 		}
 		orch.TicketLimit = cfg.ServiceNowLimit
 		log.Info("servicenow ticket lookup enabled", "url", cfg.ServiceNowURL, "user", cfg.ServiceNowUser)
+
+		// Optional LLM intent fallback, only when tickets are on. Reuses the
+		// rewrite model/endpoint config.
+		switch cfg.ServiceNowClassify {
+		case "ollama":
+			orch.Classifier = classify.Ollama{BaseURL: cfg.RewriteURL, Model: cfg.RewriteModel, HTTP: &http.Client{Timeout: cfg.RewriteTimeout}}
+			log.Info("ticket intent classifier enabled", "mode", "ollama", "model", cfg.RewriteModel)
+		case "bedrock":
+			bc, err := awsx.BedrockRuntime(context.Background())
+			if err != nil {
+				log.Error("bedrock classifier", "err", err)
+				os.Exit(1)
+			}
+			orch.Classifier = classify.NewBedrock(cfg.RewriteModel, bc)
+			log.Info("ticket intent classifier enabled", "mode", "bedrock", "model", cfg.RewriteModel)
+		case "", "off":
+			log.Info("ticket intent classifier disabled; heuristic only")
+		default:
+			log.Error("unknown KA_SERVICENOW_CLASSIFY; want \"ollama\", \"bedrock\" or \"off\"", "mode", cfg.ServiceNowClassify)
+			os.Exit(2)
+		}
 	case "", "off":
 		log.Info("servicenow ticket lookup disabled")
 	default:

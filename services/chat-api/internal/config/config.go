@@ -95,6 +95,10 @@ type Config struct {
 	ServiceNowPassword string
 	ServiceNowLimit    int
 	ServiceNowTimeout  time.Duration
+	// ServiceNowClassify selects the optional LLM ticket-intent fallback:
+	// "off" (heuristic only), "ollama", or "bedrock". It reuses the rewrite
+	// model/endpoint config.
+	ServiceNowClassify string
 	// TeamMetadata is the raw KA_TEAM_METADATA JSON (slug -> {serviceNowGroup,
 	// contact}); parsed at startup. Plain config in all environments, not a
 	// secret.
@@ -143,6 +147,7 @@ func Load() Config {
 		ServiceNowPassword: os.Getenv("KA_SERVICENOW_PASSWORD"),
 		ServiceNowLimit:    envInt("KA_SERVICENOW_LIMIT", 5),
 		ServiceNowTimeout:  envDuration("KA_SERVICENOW_TIMEOUT", 15*time.Second),
+		ServiceNowClassify: envOr("KA_SERVICENOW_CLASSIFY", "off"),
 		TeamMetadata:       os.Getenv("KA_TEAM_METADATA"),
 	}
 }
