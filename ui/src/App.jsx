@@ -6,6 +6,7 @@ import Composer from './components/Composer.jsx';
 import ContextPanel from './components/ContextPanel.jsx';
 import AdminPanel from './components/AdminPanel.jsx';
 import ErrorBanner from './components/ErrorBanner.jsx';
+import DisclaimerGate from './components/DisclaimerGate.jsx';
 import { citationTargets, groupCitations } from './citations.js';
 import { listTeams, listChats, getMessages, deleteChat, uploadFile, streamChat } from './api.js';
 import { uuid } from './uuid.js';
@@ -37,6 +38,7 @@ export default function App() {
   // the answer, or a row in the rail.
   const [activeChunkId, setActiveChunkId] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
+  const [accepted, setAccepted] = useState(false);
   const sessionId = useRef(uuid());
   // streamingRef guards the message-fetch effect during send(). Without it, the
   // `chat` SSE event for a newly-created chat triggers setCurrentChatId, which
@@ -231,6 +233,8 @@ export default function App() {
   function teamDisplayName(slug) {
     return teams.find(t => t.slug === slug)?.displayName ?? slug;
   }
+
+  if (!accepted) return <DisclaimerGate onAccept={() => setAccepted(true)} />;
 
   return (
     <div className="flex flex-col h-full">
